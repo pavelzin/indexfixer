@@ -1,0 +1,376 @@
+.indexfixer-filters {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.indexfixer-filters select {
+    margin-right: 10px;
+}
+
+.indexfixer-filters .button {
+    margin-right: 10px;
+}
+
+.wp-list-table tr[data-status="indexed"] {
+    background-color: #f0f8f0 !important;
+}
+
+.wp-list-table tr[data-status="discovered"],
+.wp-list-table tr[data-status="crawled"] {
+    background-color: #fff8f0 !important;
+}
+
+.wp-list-table tr[data-status="redirect"] {
+    background-color: #f0f0ff !important;
+}
+
+.wp-list-table tr[data-status="soft_404"],
+.wp-list-table tr[data-status="not_found"] {
+    background-color: #fff0f0 !important;
+}
+
+.wp-list-table td {
+    vertical-align: middle;
+}
+
+.wp-list-table .button-small {
+    margin-right: 5px;
+}
+
+/* Style dla tabeli */
+.indexfixer-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.indexfixer-table th,
+.indexfixer-table td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.indexfixer-table th {
+    background-color: #f5f5f5;
+}
+
+/* Style dla statusów */
+.status-indexed {
+    color: #46b450;
+}
+
+.status-not-indexed {
+    color: #dc3232;
+}
+
+.status-pending {
+    color: #ffb900;
+}
+
+/* Style dla strony konfiguracji */
+.indexfixer-settings {
+    max-width: 800px;
+    margin-top: 20px;
+}
+
+.indexfixer-settings .form-table {
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.indexfixer-settings .form-table th {
+    width: 200px;
+}
+
+.indexfixer-settings .form-table input[type="text"] {
+    width: 100%;
+    max-width: 400px;
+}
+
+.indexfixer-settings .description {
+    color: #666;
+    font-style: italic;
+    margin-top: 5px;
+}
+
+.indexfixer-settings hr {
+    margin: 30px 0;
+}
+
+.indexfixer-settings .button-primary {
+    margin-top: 20px;
+}
+
+/* Style dla komunikatów */
+.indexfixer-message {
+    padding: 12px;
+    margin: 15px 0;
+    border-left: 4px solid;
+}
+
+.indexfixer-message.success {
+    background: #f0f8f0;
+    border-color: #46b450;
+}
+
+.indexfixer-message.error {
+    background: #fef7f7;
+    border-color: #dc3232;
+}
+
+.indexfixer-message.warning {
+    background: #fff8e5;
+    border-color: #ffb900;
+}
+
+/* Style dla logów */
+.indexfixer-logs {
+    margin-top: 20px;
+    padding: 15px;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.indexfixer-log-entry {
+    padding: 8px;
+    margin-bottom: 5px;
+    border-left: 4px solid #ccc;
+}
+
+.indexfixer-log-entry.info {
+    background: #f7fcff;
+    border-color: #0073aa;
+}
+
+.indexfixer-log-entry.success {
+    background: #f0f8f0;
+    border-color: #46b450;
+}
+
+.indexfixer-log-entry.error {
+    background: #fef7f7;
+    border-color: #dc3232;
+}
+
+.indexfixer-log-entry.warning {
+    background: #fff8e5;
+    border-color: #ffb900;
+}
+
+.indexfixer-log-entry strong {
+    color: #23282d;
+    margin-right: 10px;
+}
+
+/* Style dla szczegółów statusu */
+.status-details {
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.status-details .verdict {
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.verdict-pass,
+.verdict-neutral {
+    color: #0073aa;
+}
+
+.verdict-fail {
+    color: #dc3232;
+}
+
+.status-details .coverage-state {
+    margin-bottom: 8px;
+    color: #666;
+}
+
+.status-details .technical-details {
+    margin: 8px 0;
+    padding: 6px;
+    background: #f9f9f9;
+    border-radius: 3px;
+}
+
+.status-details .technical-details > div {
+    margin-bottom: 3px;
+}
+
+.status-details .good {
+    color: #46b450;
+}
+
+.status-details .bad {
+    color: #dc3232;
+}
+
+.status-details .last-crawl {
+    margin: 8px 0;
+    padding: 6px;
+    background: #f0f8ff;
+    border-radius: 3px;
+}
+
+.status-details .referring-urls {
+    margin-top: 8px;
+    padding: 6px;
+    background: #f8f8f8;
+    border-radius: 3px;
+}
+
+.status-details .referring-urls ul {
+    margin: 4px 0 0 0;
+    padding-left: 15px;
+}
+
+.status-details .referring-urls li {
+    margin-bottom: 2px;
+    font-size: 11px;
+    color: #666;
+}
+
+/* Style dla sortowania */
+.wp-list-table th {
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+}
+
+.wp-list-table th:hover {
+    background-color: #f0f0f1;
+}
+
+.wp-list-table th.sorted-asc::after {
+    content: " ↑";
+    color: #0073aa;
+    font-weight: bold;
+}
+
+.wp-list-table th.sorted-desc::after {
+    content: " ↓";
+    color: #0073aa;
+    font-weight: bold;
+}
+
+/* Style dla nowych statusów */
+.verdict-pass {
+    color: #46b450;
+    font-weight: bold;
+}
+
+.verdict-neutral {
+    color: #0073aa;
+    font-weight: bold;
+}
+
+.verdict-fail {
+    color: #dc3232;
+    font-weight: bold;
+}
+
+.status-unknown {
+    color: #999;
+    font-style: italic;
+}
+
+/* Poprawka dla filtrów */
+.indexfixer-filters select {
+    margin-right: 10px;
+    min-width: 150px;
+}
+
+/* Style dla sprawdzania pojedynczego URL */
+.indexfixer-single-check {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.indexfixer-single-check h2 {
+    margin-top: 0;
+    margin-bottom: 15px;
+}
+
+.single-url-form {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.single-url-form input[type="url"] {
+    flex: 1;
+    min-width: 300px;
+}
+
+.single-url-details {
+    padding: 15px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.single-url-details h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #23282d;
+}
+
+.single-url-details .verdict-result {
+    margin-bottom: 10px;
+    font-size: 16px;
+}
+
+.single-url-details .coverage-result {
+    margin-bottom: 15px;
+    color: #666;
+}
+
+.single-url-details .technical-details {
+    margin: 15px 0;
+    padding: 10px;
+    background: #fff;
+    border-radius: 3px;
+}
+
+.single-url-details .technical-details > div {
+    margin-bottom: 5px;
+}
+
+.single-url-details .crawl-time {
+    margin: 15px 0;
+    padding: 10px;
+    background: #f0f8ff;
+    border-radius: 3px;
+}
+
+.single-url-details .referring-urls {
+    margin-top: 15px;
+    padding: 10px;
+    background: #f8f8f8;
+    border-radius: 3px;
+}
+
+.single-url-details .referring-urls ul {
+    margin: 5px 0 0 0;
+    padding-left: 20px;
+}
+
+.single-url-details .referring-urls li {
+    margin-bottom: 3px;
+    font-size: 13px;
+    color: #666;
+} 
