@@ -148,13 +148,14 @@ if (!defined('ABSPATH')) {
         <table class="wp-list-table widefat fixed striped">
             <thead>
                 <tr>
-                    <th style="width: 25%;">URL</th>
-                    <th style="width: 15%;">Verdict</th>
-                    <th style="width: 20%;">Coverage State</th>
-                    <th style="width: 10%;">Robots.txt</th>
+                    <th style="width: 20%;">URL</th>
+                    <th style="width: 10%;">Verdict</th>
+                    <th style="width: 15%;">Coverage State</th>
+                    <th style="width: 8%;">Robots.txt</th>
                     <th style="width: 10%;">Ostatni crawl</th>
-                    <th style="width: 10%;">Typ</th>
-                    <th style="width: 10%;">Data publikacji</th>
+                    <th style="width: 12%;">Ostatnie sprawdzenie API</th>
+                    <th style="width: 8%;">Typ</th>
+                    <th style="width: 12%;">Data publikacji</th>
                 </tr>
             </thead>
             <tbody>
@@ -236,6 +237,20 @@ if (!defined('ABSPATH')) {
                                 $crawl_date = date('Y-m-d', strtotime($status_data['lastCrawlTime']));
                                 echo esc_html($crawl_date);
                                 ?>
+                            <?php else: ?>
+                                <span class="status-unknown">-</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if (isset($status_data['lastChecked']) && $status_data['lastChecked'] !== 'unknown'): ?>
+                                <?php 
+                                $checked_date = date('Y-m-d H:i', strtotime($status_data['lastChecked']));
+                                $time_ago = human_time_diff(strtotime($status_data['lastChecked']), current_time('timestamp'));
+                                ?>
+                                <span title="<?php echo esc_attr($status_data['lastChecked']); ?>">
+                                    <?php echo esc_html($checked_date); ?><br>
+                                    <small style="color: #666;"><?php echo esc_html($time_ago); ?> temu</small>
+                                </span>
                             <?php else: ?>
                                 <span class="status-unknown">-</span>
                             <?php endif; ?>

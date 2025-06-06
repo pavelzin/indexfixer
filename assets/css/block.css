@@ -1,0 +1,50 @@
+.wp-block-indexfixer-not-indexed-posts {
+    background: #fff;
+    border: 1px solid #e1e1e1;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.wp-block-indexfixer-not-indexed-posts h3 {
+    color: #23282d;
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 0;
+    margin-bottom: 15px;
+}
+
+.wp-block-indexfixer-not-indexed-posts ul {
+    list-style: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.wp-block-indexfixer-not-indexed-posts li {
+    margin-bottom: 12px !important;
+    padding: 8px !important;
+    background: #f9f9f9 !important;
+    border-left: 3px solid #ff6b6b !important;
+    border-radius: 0 4px 4px 0;
+}
+
+.wp-block-indexfixer-not-indexed-posts li:last-child {
+    margin-bottom: 0 !important;
+}
+
+.wp-block-indexfixer-not-indexed-posts a {
+    color: #0073aa;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.wp-block-indexfixer-not-indexed-posts a:hover {
+    color: #005a87;
+    text-decoration: underline;
+}
+
+.wp-block-indexfixer-not-indexed-posts p {
+    margin: 0;
+    color: #666;
+    font-style: italic;
+} 

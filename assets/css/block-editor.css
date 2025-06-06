@@ -1,0 +1,48 @@
+.indexfixer-block-preview {
+    background: #fff;
+    border: 2px dashed #ddd;
+    border-radius: 4px;
+    padding: 20px;
+    min-height: 100px;
+}
+
+.indexfixer-block-preview h3 {
+    color: #1e1e1e;
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 0;
+    margin-bottom: 15px;
+}
+
+.indexfixer-block-preview ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.indexfixer-block-preview li {
+    margin-bottom: 12px;
+    padding: 8px;
+    background: #f9f9f9;
+    border-left: 3px solid #ff6b6b;
+    border-radius: 0 4px 4px 0;
+}
+
+.indexfixer-block-preview li:last-child {
+    margin-bottom: 0;
+}
+
+.indexfixer-block-preview p {
+    margin: 0;
+    color: #666;
+    font-style: italic;
+}
+
+/* Panel ustawień */
+.components-panel__body .components-base-control {
+    margin-bottom: 16px;
+}
+
+.components-toggle-control .components-base-control__label {
+    font-weight: 600;
+} 

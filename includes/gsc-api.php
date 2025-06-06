@@ -25,9 +25,9 @@ if (!class_exists('IndexFixer_GSC_API')) {
             IndexFixer_Logger::log('=== POCZĄTEK check_url_status() ===', 'info');
             IndexFixer_Logger::log(sprintf('URL do sprawdzenia: %s', $url), 'info');
             
-            if (!$this->auth_handler->is_authorized()) {
+            if (!$this->auth_handler->is_authorized_with_refresh()) {
                 IndexFixer_Logger::log('Brak autoryzacji do Google Search Console', 'error');
-                return false;
+                return array('error' => 'Brak autoryzacji do Google Search Console');
             }
 
             IndexFixer_Logger::log('Autoryzacja OK, przechodze dalej...', 'info');

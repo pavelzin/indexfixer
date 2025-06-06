@@ -11,6 +11,7 @@ class IndexFixer_Auth_Handler {
     private $client_id;
     private $client_secret;
     private $access_token;
+    private $refresh_token;
     
     /**
      * Konstruktor
@@ -21,6 +22,19 @@ class IndexFixer_Auth_Handler {
             $this->client_id = get_option('indexfixer_gsc_client_id');
             $this->client_secret = get_option('indexfixer_gsc_client_secret');
             $this->access_token = get_option('indexfixer_gsc_access_token');
+            $this->refresh_token = get_option('indexfixer_gsc_refresh_token');
+        }
+    }
+    
+    /**
+     * Przeładowuje tokeny z bazy danych (przydatne po ich usunięciu)
+     */
+    public function reload_tokens_from_database() {
+        if (function_exists('get_option')) {
+            $this->access_token = get_option('indexfixer_gsc_access_token');
+            $this->refresh_token = get_option('indexfixer_gsc_refresh_token');
+            
+            IndexFixer_Logger::log('Przeładowano tokeny z bazy danych', 'info');
         }
     }
     
@@ -62,12 +76,12 @@ class IndexFixer_Auth_Handler {
      */
     public function is_authorized() {
         if (empty($this->client_id) || empty($this->client_secret)) {
-            IndexFixer_Logger::log('Brak Client ID lub Client Secret', 'error');
+            IndexFixer_Logger::log('Brak Client ID lub Client Secret', 'debug');
             return false;
         }
         
         if (empty($this->access_token)) {
-            IndexFixer_Logger::log('Brak Access Token', 'error');
+            IndexFixer_Logger::log('Brak Access Token', 'debug');
             return false;
         }
         
@@ -84,7 +98,7 @@ class IndexFixer_Auth_Handler {
         if (is_wp_error($response)) {
             IndexFixer_Logger::log(
                 sprintf('Błąd podczas weryfikacji tokenu: %s', $response->get_error_message()),
-                'error'
+                'debug'
             );
             return false;
         }
@@ -93,7 +107,7 @@ class IndexFixer_Auth_Handler {
         if ($response_code !== 200) {
             IndexFixer_Logger::log(
                 sprintf('Token nieważny (kod %d)', $response_code),
-                'error'
+                'debug'
             );
             return false;
         }
@@ -209,6 +223,14 @@ class IndexFixer_Auth_Handler {
         
         if (isset($body['access_token'])) {
             $this->access_token = $body['access_token'];
+            
+            // Zapisz refresh token jeśli jest dostępny
+            if (isset($body['refresh_token'])) {
+                $this->refresh_token = $body['refresh_token'];
+                update_option('indexfixer_gsc_refresh_token', $this->refresh_token);
+                IndexFixer_Logger::log('Zapisano Refresh Token', 'success');
+            }
+            
             $update_result = function_exists('update_option') ? update_option('indexfixer_gsc_access_token', $this->access_token) : false;
             
             IndexFixer_Logger::log(sprintf('Wynik zapisywania tokenu: %s', $update_result ? 'sukces' : 'błąd'), 'info');
@@ -228,5 +250,115 @@ class IndexFixer_Auth_Handler {
             'error'
         );
         return false;
+    }
+    
+    /**
+     * Odnawia access token używając refresh token
+     */
+    public function refresh_access_token() {
+        if (empty($this->refresh_token)) {
+            IndexFixer_Logger::log('Brak Refresh Token - wymagana ponowna autoryzacja', 'error');
+            return false;
+        }
+        
+        if (empty($this->client_id) || empty($this->client_secret)) {
+            IndexFixer_Logger::log('Brak Client ID lub Client Secret podczas odnawiania tokenu', 'error');
+            return false;
+        }
+        
+        IndexFixer_Logger::log('Próba odnawiania Access Token...', 'info');
+        
+        $response = wp_remote_post('https://oauth2.googleapis.com/token', array(
+            'body' => array(
+                'client_id' => $this->client_id,
+                'client_secret' => $this->client_secret,
+                'refresh_token' => $this->refresh_token,
+                'grant_type' => 'refresh_token'
+            )
+        ));
+        
+        if (is_wp_error($response)) {
+            IndexFixer_Logger::log(
+                sprintf('Błąd podczas odnawiania tokenu: %s', $response->get_error_message()),
+                'error'
+            );
+            return false;
+        }
+        
+        $response_code = wp_remote_retrieve_response_code($response);
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        
+        // Dodaj szczegółowe logowanie odpowiedzi Google
+        IndexFixer_Logger::log(
+            sprintf('Odpowiedź Google przy refresh (kod %d): %s', $response_code, wp_remote_retrieve_body($response)),
+            'info'
+        );
+        
+        if (isset($body['access_token'])) {
+            $this->access_token = $body['access_token'];
+            update_option('indexfixer_gsc_access_token', $this->access_token);
+            
+            IndexFixer_Logger::log('Access Token został pomyślnie odnowiony', 'success');
+            return true;
+        }
+        
+        // Jeśli Google zwraca błąd 400 lub inne błędy związane z refresh tokenem
+        if ($response_code === 400 || (isset($body['error']) && in_array($body['error'], ['invalid_grant', 'invalid_client']))) {
+            IndexFixer_Logger::log('Refresh token jest nieważny - usuwam tokeny i wymuszam ponowną autoryzację', 'warning');
+            
+            // Usuń wszystkie tokeny z bazy
+            delete_option('indexfixer_gsc_access_token');
+            delete_option('indexfixer_gsc_refresh_token');
+            
+            // Wyczyść tokeny w obiekcie
+            $this->access_token = '';
+            $this->refresh_token = '';
+            
+            // Zaloguj wymaganie ponownej autoryzacji
+            IndexFixer_Logger::log('WYMAGANA PONOWNA AUTORYZACJA: Przejdź do IndexFixer i kliknij "Zaloguj się przez Google"', 'error');
+            
+            return false;
+        }
+        
+        IndexFixer_Logger::log(
+            sprintf('Błąd odnawiania tokenu: %s', json_encode($body)),
+            'error'
+        );
+        return false;
+    }
+    
+    /**
+     * Sprawdza czy użytkownik jest autoryzowany z automatycznym odnawianiem tokenu
+     */
+    public function is_authorized_with_refresh() {
+        // Najpierw sprawdź podstawowe wymagania
+        if (empty($this->client_id) || empty($this->client_secret)) {
+            IndexFixer_Logger::log('Brak Client ID lub Client Secret', 'debug');
+            return false;
+        }
+        
+        if (empty($this->access_token)) {
+            IndexFixer_Logger::log('Brak Access Token', 'debug');
+            return false;
+        }
+        
+        // Sprawdź czy token jest ważny
+        $response = wp_remote_get(
+            'https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' . $this->access_token
+        );
+        
+        if (is_wp_error($response)) {
+            IndexFixer_Logger::log('Błąd weryfikacji tokenu - próba odnowienia', 'info');
+            return $this->refresh_access_token();
+        }
+        
+        $response_code = wp_remote_retrieve_response_code($response);
+        if ($response_code !== 200) {
+            IndexFixer_Logger::log('Token nieważny - próba odnowienia', 'info');
+            return $this->refresh_access_token();
+        }
+        
+        IndexFixer_Logger::log('Autoryzacja poprawna', 'success');
+        return true;
     }
 } 

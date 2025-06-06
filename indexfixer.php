@@ -3,7 +3,7 @@
  * Plugin Name: IndexFixer
  * Plugin URI: https://github.com/pavelzin/indexfixer.git
  * Description: Wtyczka do sprawdzania statusu indeksowania URL-i w Google Search Console
- * Version: 1.0.2
+ * Version: 1.0.22
  * Author: Pawel Zinkiewicz
  * Author URI: https://bynajmniej.pl
  * License: GPL v2 or later
@@ -23,7 +23,7 @@ if (!function_exists('add_action')) {
 }
 
 // Definicje stałych
-define('INDEXFIXER_VERSION', '1.0.2');
+define('INDEXFIXER_VERSION', '1.0.22');
 define('INDEXFIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INDEXFIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -37,6 +37,10 @@ require_once INDEXFIXER_PLUGIN_DIR . 'includes/cache.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/helpers.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/auth-handler.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/gsc-api.php';
+require_once INDEXFIXER_PLUGIN_DIR . 'includes/database.php';
+require_once INDEXFIXER_PLUGIN_DIR . 'includes/widget.php';
+require_once INDEXFIXER_PLUGIN_DIR . 'includes/block-widget.php';
+require_once INDEXFIXER_PLUGIN_DIR . 'includes/dashboard-widget.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'admin/dashboard.php';
 
 // Inicjalizacja wtyczki
@@ -238,7 +242,7 @@ function indexfixer_ajax_check_single_url() {
 // Aktywacja wtyczki
 function indexfixer_activate() {
     if (!wp_next_scheduled('indexfixer_check_urls_event')) {
-        wp_schedule_event(time(), 'six_hours', 'indexfixer_check_urls_event');
+        wp_schedule_event(time(), 'hourly', 'indexfixer_check_urls_event');
     }
 }
 
@@ -355,6 +359,26 @@ function indexfixer_check_urls() {
                 }
                 
                 IndexFixer_Cache::set_url_status($url_data['url'], $detailed_status);
+                
+                // NOWE: Zapisz również w tabeli bazy danych
+                $post_id = url_to_postid($url_data['url']);
+                if (!$post_id) {
+                    // Spróbuj znaleźć post_id na podstawie permalink
+                    $path = parse_url($url_data['url'], PHP_URL_PATH);
+                    if ($path) {
+                        global $wpdb;
+                        $post_id = $wpdb->get_var($wpdb->prepare(
+                            "SELECT ID FROM {$wpdb->posts} 
+                             WHERE post_name = %s 
+                             AND post_status = 'publish'
+                             LIMIT 1",
+                            basename(rtrim($path, '/'))
+                        ));
+                    }
+                }
+                // Zapisz zawsze - nawet bez post_id (użyj 0)
+                IndexFixer_Database::save_url_status($post_id ?: 0, $url_data['url'], $detailed_status);
+                
                 $index_status = $detailed_status['simple_status'];
                 IndexFixer_Logger::log(
                     sprintf('✅ SUKCES [%d/%d]: %s - Status: %s', $current_position, $total_urls, $url_data['url'], $index_status),
@@ -406,7 +430,35 @@ function indexfixer_check_urls() {
         IndexFixer_Logger::log('ℹ️  INFORMACJA: Wszystkie URL-e były już w cache - brak nowych do sprawdzenia', 'info');
     }
     
+    // Zapisz czas ostatniego sprawdzenia dla dashboard widget
+    update_option('indexfixer_last_check', time());
+    
     // Usuń flagę że proces się wykonuje
     delete_transient('indexfixer_process_running');
     IndexFixer_Logger::log('🏁 PROCES ZAKOŃCZONY - można uruchomić ponownie', 'success');
+}
+
+// Główna klasa wtyczki
+class IndexFixer {
+
+    public function __construct() {
+        add_action('admin_menu', array($this, 'add_admin_menu'));
+        add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
+        add_action('wp_ajax_check_single_url', array($this, 'ajax_check_single_url'));
+        
+        // Hook dla migracji danych przy aktywacji
+        add_action('admin_init', array($this, 'maybe_migrate_data'));
+    }
+
+    /**
+     * Migruje dane z wp_options do nowej tabeli (uruchamiane raz)
+     */
+    public function maybe_migrate_data() {
+        $migrated = get_option('indexfixer_data_migrated', false);
+        
+        if (!$migrated) {
+            IndexFixer_Database::migrate_from_cache();
+            update_option('indexfixer_data_migrated', true);
+        }
+    }
 } 

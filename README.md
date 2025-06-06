@@ -1,158 +1,236 @@
 # IndexFixer - WordPress Plugin
 
-Wtyczka WordPress do sprawdzania statusu indeksowania URL-i w Google Search Console.
+## Opis
 
-## 🚀 Funkcje
+IndexFixer to zaawansowana wtyczka WordPress do monitorowania statusu indeksowania URL-ów w Google Search Console. Wtyczka pozwala sprawdzać status indeksowania wszystkich URL-ów na stronie i śledzić postęp indeksowania przez Google.
 
-### ✅ Sprawdzanie statusu indeksowania
-- **Masowe sprawdzanie** wszystkich URL-i na stronie (posty, strony, produkty)
-- **Pojedyncze sprawdzanie** dowolnego URL-a
-- **Szczegółowe informacje** z Google Search Console API:
-  - Verdict (PASS/NEUTRAL/FAIL)
-  - Coverage State (zaindeksowane/nie zaindeksowane)
-  - Robots.txt status
-  - Indexing state
-  - Page fetch state
-  - Data ostatniego crawl'a
-  - Linki wewnętrzne
+## Nowe funkcje w wersji 1.0.3 🚀
 
-### 📊 Dashboard z tabelą
-- **Sortowanie** po wszystkich kolumnach
-- **Filtrowanie** po statusach i robots.txt
-- **Kolorowe kodowanie** statusów
-- **Tooltipsy** z dodatkowymi informacjami
-- **Responsywny design**
+### 🎯 Widget WordPress dla Niezaindeksowanych Postów
+- **Widget na stronie**: Wyświetla 5-10 niezaindeksowanych postów na stronie głównej
+- **Automatyczne odświeżanie**: Gdy Google zaindeksuje post, automatycznie zniknie z listy  
+- **Inteligentne linkowanie**: Pomaga w strategii linkowania wewnętrznego
+- **Konfiguracja**: Łatwa konfiguracja przez panel widgetów WordPress
 
-### 🔧 Dodatkowe funkcje
-- **Cache** wyników (24h)
-- **Automatyczne sprawdzanie** co 6 godzin
-- **Eksport do CSV**
-- **Szczegółowe logi**
-- **Limit URL-ów** (domyślnie 500, konfigurowalny)
+### 🗄️ Własna Tabela Bazy Danych
+- **Wydajność**: Przejście z wp_options na dedykowaną tabelę MySQL
+- **Większe limity**: Obsługa znacznie większej liczby URL-ów
+- **Migracja**: Automatyczna migracja danych z wp_options
+- **Kompatybilność wsteczna**: Pełna kompatybilność z istniejącymi danymi
 
-## 📋 Wymagania
+### 🔄 Automatyczne Sprawdzanie
+- **Codzienne sprawdzanie**: Widget automatycznie sprawdza URL-e co 24h  
+- **Nowe posty**: Automatyczne dodawanie nowych postów do sprawdzania
+- **Rate limiting**: Inteligentne opóźnienia dla API Google
+- **Logowanie**: Szczegółowe logi wszystkich operacji
 
-- WordPress 5.0+
-- PHP 7.4+
-- Konto Google Cloud Console z włączonym Search Console API
-- Autoryzacja OAuth 2.0
+### 📊 Ulepszone Statystyki  
+- **Nowy dashboard**: Strona zarządzania widgetem z statystykami
+- **Szczegółowe metryki**: Liczba sprawdzeń, ostatnie sprawdzenie, zmiany statusu
+- **Filtrowanie**: Widok URL-ów według statusu (indexed, not_indexed, discovered)
 
-## 🛠 Instalacja
+## Główne Funkcje
 
-1. **Pobierz** najnowszą wersję z [Releases](https://github.com/pavelzin/indexfixer/releases)
-2. **Wgraj** ZIP przez WordPress admin lub rozpakuj do `/wp-content/plugins/`
-3. **Aktywuj** wtyczkę w panelu WordPress
-4. **Skonfiguruj** Google Cloud Console (patrz sekcja Konfiguracja)
+### ✅ Autoryzacja Google
+- Pełna integracja z Google Search Console API
+- Bezpieczna autoryzacja OAuth 2.0
+- Konfiguracja przez interfejs WordPress
 
-## ⚙️ Konfiguracja Google Cloud Console
+### 📈 Monitorowanie URL-ów
+- Automatyczne pobieranie wszystkich URL-ów ze strony
+- Sprawdzanie statusu indeksowania w Google
+- Obsługa do **500 URL-ów** (konfigurowalny limit)
+- Szczegółowe informacje o statusie każdego URL-a
 
-### 1. Utwórz projekt w Google Cloud Console
+### 📊 Statystyki i Wykresy
+- Kompletne statystyki indeksowania
+- Wykresy Chart.js pokazujące rozkład statusów
+- Wizualne przedstawienie postępu indeksowania
+- Statystyki w czasie rzeczywistym
+
+### 🔄 Automatyczne Sprawdzanie
+- Harmonogram sprawdzania URL-ów co 6 godzin
+- Inteligentne cache'owanie wyników
+- Rate limiting dla API Google (sleep 2s między żądaniami)
+- System logowania aktywności
+
+## Instalacja
+
+1. **Pobierz wtyczkę** z repozytorium GitHub
+2. **Zainstaluj** w WordPress (panel administracyjny → Wtyczki → Dodaj nową → Wgraj wtyczkę)
+3. **Aktywuj** wtyczkę
+4. **Przejdź** do IndexFixer w menu WordPress
+5. **Skonfiguruj** autoryzację Google Search Console
+
+## Konfiguracja Google Search Console API
+
+### Krok 1: Utwórz projekt w Google Cloud Console
 1. Przejdź do [Google Cloud Console](https://console.cloud.google.com/)
 2. Utwórz nowy projekt lub wybierz istniejący
 3. Włącz **Google Search Console API**
 
-### 2. Skonfiguruj OAuth 2.0
-1. Przejdź do **APIs & Services > Credentials**
-2. Kliknij **Create Credentials > OAuth 2.0 Client IDs**
-3. Wybierz **Web application**
-4. Dodaj **Authorized redirect URI**:
+### Krok 2: Utwórz dane uwierzytelniające OAuth 2.0
+1. Przejdź do **Dane uwierzytelniające** → **Utwórz dane uwierzytelniające** → **Identyfikator klienta OAuth**
+2. Wybierz **Aplikacja internetowa**
+3. Dodaj **Autoryzowane identyfikatory URI przekierowania**:
    ```
    https://twoja-domena.pl/wp-admin/admin.php?page=indexfixer&action=auth_callback
    ```
-5. Zapisz **Client ID** i **Client Secret**
 
-### 3. Konfiguracja wtyczki
-1. Przejdź do **IndexFixer > Konfiguracja** w WordPress admin
-2. Wpisz **Client ID** i **Client Secret**
-3. Kliknij **Zaloguj się przez Google**
-4. Autoryzuj dostęp do Search Console
+### Krok 3: Konfiguracja w WordPress
+1. Skopiuj **Client ID** i **Client Secret**
+2. Wklej je w ustawieniach IndexFixer
+3. Kliknij **Autoryzuj z Google**
+4. Zaloguj się do konta Google powiązanego z Search Console
 
-## 📖 Użytkowanie
+## Widget Niezaindeksowanych Postów 🎯
 
-### Sprawdzanie pojedynczego URL-a
-1. Przejdź do **IndexFixer** w menu WordPress
-2. W sekcji "Sprawdź pojedynczy URL" wpisz adres
-3. Kliknij **Sprawdź URL**
-4. Zobacz szczegółowe wyniki
+### Instalacja Widget
+1. **Przejdź do**: Wygląd → Widgety (lub Wygląd → Edytor motywów → Widgety)
+2. **Znajdź widget**: "IndexFixer - Niezaindeksowane posty"  
+3. **Przeciągnij** do wybranego obszaru (np. boczny panel)
+4. **Skonfiguruj**:
+   - Ustaw tytuł (np. "Posty do zalinkowania")
+   - Wybierz liczbę postów (5-10 optymalnie)
+   - Włącz automatyczne sprawdzanie co 24h
 
-### Masowe sprawdzanie
-1. Kliknij **Odśwież dane** w dashboardzie
-2. Wtyczka sprawdzi wszystkie URL-e (limit 500)
-3. Wyniki pojawią się w tabeli
+### Jak Działa Widget
+- **Linkowanie wewnętrzne**: Widget pokazuje niezaindeksowane posty, które warto linkować wewnętrznie
+- **Automatyczne czyszczenie**: Gdy Google zaindeksuje post, automatycznie zniknie z listy
+- **Inteligentne odświeżanie**: Nowe posty są automatycznie dodawane do sprawdzania
+- **Codzienne sprawdzanie**: URL-e sprawdzane automatycznie co 24h w tle
 
-### Filtrowanie i sortowanie
-- **Kliknij nagłówek** kolumny aby posortować
-- **Użyj filtrów** aby pokazać tylko określone statusy
-- **Hover nad wartościami** aby zobaczyć tooltipsy
+## Zarządzanie Bazą Danych
 
-## 🎨 Kolorowe kodowanie
+### Migracja z wp_options
+- **Automatyczna**: Dane migrują się automatycznie przy pierwszym użyciu
+- **Ręczna**: Panel "Widget" → "Migracja Danych" → "Uruchom migrację"
+- **Bezpieczna**: Stare dane pozostają jako backup w wp_options
 
-- 🟢 **Zielone** - PASS, ALLOWED, SUCCESSFUL
-- 🔵 **Niebieskie** - NEUTRAL
-- 🔴 **Czerwone** - FAIL, DISALLOWED, błędy
-- 🔘 **Szare** - brak danych
+### Narzędzia Administracyjne
+- **Statystyki bazy**: Podgląd liczby URL-ów według statusów
+- **Lista postów**: Top 10 niezaindeksowanych postów z szczegółami
+- **Czyszczenie cache**: Możliwość wyczyszczenia starych danych wp_options
 
-## 📁 Struktura plików
+## Użycie
 
-```
-indexfixer/
-├── indexfixer.php          # Główny plik wtyczki
-├── admin/
-│   └── dashboard.php       # Klasa dashboardu
-├── includes/
-│   ├── auth-handler.php    # Obsługa OAuth
-│   ├── gsc-api.php        # API Google Search Console
-│   ├── cache.php          # System cache
-│   ├── logger.php         # System logowania
-│   ├── helpers.php        # Funkcje pomocnicze
-│   └── fetch-urls.php     # Pobieranie URL-ów
-├── templates/
-│   └── dashboard.php      # Szablon dashboardu
-├── assets/
-│   ├── css/
-│   │   └── admin.css      # Style CSS
-│   └── js/
-│       └── admin.js       # JavaScript
-└── uninstall.php          # Czyszczenie przy usuwaniu
-```
+### Dashboard Główny
+- **Przegląd wszystkich URL-ów** na stronie
+- **Statystyki indeksowania** z wykresami
+- **Sprawdzanie pojedynczych URL-ów** przyciskiem 🔄
+- **Export do CSV** wszystkich danych
 
-## 🔧 Filtry WordPress
+### Panel Widget
+- **Statystyki bazy danych** - kompletny przegląd
+- **Instrukcje konfiguracji** widget WordPress  
+- **Narzędzia migracji** i zarządzania
+- **Lista niezaindeksowanych** z możliwością sprawdzania
 
-```php
-// Zmień limit sprawdzanych URL-ów
-add_filter('indexfixer_url_limit', function($limit) {
-    return 50; // Sprawdzaj tylko 50 URL-ów
-});
-```
+### Automatyczne Funkcje
+- **Nowe posty**: Automatycznie dodawane do sprawdzania przy publikacji
+- **Codzienne sprawdzanie**: Widget sprawdza 10 najstarszych URL-ów co 24h
+- **Rate limiting**: Automatyczne opóźnienia 2s między żądaniami API
+- **Inteligentne cache**: Pomijanie już sprawdzonych URL-ów
 
-## 📝 Changelog
+## Statystyki
 
-### v1.0.1 (2025-01-06)
-- ✅ Dodano sprawdzanie pojedynczego URL-a
-- ✅ Poprawiono wyświetlanie szczegółowych statusów
-- ✅ Dodano kolorowe kodowanie
-- ✅ Ulepszone sortowanie i filtrowanie
+Plugin zbiera następujące metryki:
 
-### v1.0.0 (2025-01-05)
-- 🎉 Pierwsza wersja
-- ✅ Integracja z Google Search Console API
-- ✅ Masowe sprawdzanie URL-ów
-- ✅ Dashboard z tabelą
-- ✅ System cache i logowania
+### Statusy Indeksowania
+- **Indexed**: URL jest zaindeksowany w Google
+- **Not Indexed**: URL nie jest zaindeksowany  
+- **Discovered**: URL został odkryty ale nie zaindeksowany
+- **Excluded**: URL wykluczony (robots.txt, 404, etc.)
 
-## 🤝 Wsparcie
+### Verdict Google
+- **Pass**: Strona przeszła walidację
+- **Neutral**: Status neutralny  
+- **Fail**: Problemy ze stroną
 
-- **Issues**: [GitHub Issues](https://github.com/pavelzin/indexfixer/issues)
-- **Dokumentacja**: [Wiki](https://github.com/pavelzin/indexfixer/wiki)
-- **Autor**: [Paweł Zinkiewicz](https://bynajmniej.pl)
+### Robots.txt
+- **Allowed**: Dostęp dozwolony
+- **Disallowed**: Dostęp zablokowany
 
-## 📄 Licencja
+## Limity i Wydajność
 
-GPL v2 or later - patrz [LICENSE](LICENSE) file.
+- **Limit URL-ów**: 500 (zdefiniowany przez stałą `INDEXFIXER_URL_LIMIT`)
+- **Rate limiting**: 2 sekundy między żądaniami API
+- **Cache**: Inteligentne cache'owanie zapobiega duplikatom
+- **Automatyczne sprawdzanie**: Co 6 godzin dla wszystkich, co 24h dla widget
+- **Timeout**: Zabezpieczenie przed zbyt długimi procesami
 
-## 🙏 Podziękowania
+## Logowanie
 
-Wtyczka wykorzystuje:
-- Google Search Console API
-- WordPress REST API
-- jQuery dla interfejsu użytkownika 
+Plugin loguje wszystkie działania:
+- Autoryzację Google
+- Sprawdzanie URL-ów  
+- Błędy API
+- Migrację danych
+- Działania widget
+
+Logi dostępne w dashboardzie wtyczki.
+
+## Wymagania Systemowe
+
+- **WordPress**: 5.0 lub nowszy
+- **PHP**: 7.4 lub nowszy
+- **MySQL**: 5.6 lub nowszy
+- **cURL**: Wymagany dla połączeń API
+- **Google Search Console**: Skonfigurowane dla domeny
+
+## Wersje
+
+### 1.0.7 (Aktualna)
+- 🔓 **Odblokowanie procesu** - dodano narzędzie do odblokowania zablokowanego procesu sprawdzania
+- 🛠️ **Ulepszone clear-cache.php** - rozszerzony skrypt z interfejsem do odblokowania procesu
+- 🔧 **AJAX unlock** - przycisk odblokowania w panelu zarządzania
+- 📋 **Lepsze logowanie** - automatyczne logowanie odblokowania procesu
+
+### 1.0.6
+- 🐛 **Poprawka zapisu bazy** - naprawiono zapisywanie URL-ów do tabeli (zawsze zapisuje, nawet bez post_id)
+- 📊 **Lepsze ładowanie danych** - ulepszona metoda `get_cached_urls()` z pełnymi danymi z tabeli  
+- 🔍 **Debug tabeli bazy** - dodano narzędzie debug do sprawdzania stanu tabeli indexfixer_urls
+- 🔧 **Pojedyncze sprawdzanie** - poprawiono AJAX sprawdzanie pojedynczych URL-ów
+
+### 1.0.5
+- 🎨 **Widget frontend** - usunięto wyświetlanie daty sprawdzenia z widgetu (czytelniejszy UI)
+- 📊 **Dashboard** - dodano kolumnę "Ostatnie sprawdzenie API" z dokładną datą i czasem  
+- ⏰ **Automatyczne sprawdzanie** - ulepszono logikę tickera w widgetcie (lepsze planowanie harmonogramu)
+- 🔧 **Inteligentny harmonogram** - automatyczne włączanie/wyłączanie sprawdzania na podstawie ustawień widgetu
+
+### 1.0.4
+- 🐛 **Poprawka widgetu** - naprawiono logikę pobierania niezaindeksowanych postów
+- ✅ **Lepsze mapowanie statusów** - widget teraz prawidłowo identyfikuje niezaindeksowane URL-e na podstawie kolumn `verdict` i `coverage_state`
+- 🔧 **Usprawnienia bazy danych** - ulepszona metoda `get_urls_by_status()` dla poprawnego filtrowania
+
+### 1.0.3
+- ✅ Widget WordPress dla niezaindeksowanych postów
+- ✅ Własna tabela bazy danych zamiast wp_options  
+- ✅ Automatyczne sprawdzanie URL-ów co 24h przez widget
+- ✅ Panel zarządzania widgetem i bazą danych
+- ✅ Automatyczne dodawanie nowych postów do sprawdzania
+- ✅ Migracja danych z wp_options z pełną kompatybilnością wsteczną
+
+### 1.0.2  
+- ✅ Statystyki i wykresy Chart.js
+- ✅ Inline styling, zero dependencji CSS
+- ✅ Konfigurowalny limit URL-ów jako stała
+- ✅ Rate limiting fix (sleep 2s)
+
+### 1.0.1
+- ✅ Autoryzacja Google OAuth 2.0
+- ✅ Sprawdzanie statusu indeksowania  
+- ✅ Dashboard z przyciskami sprawdzania
+- ✅ Export CSV
+- ✅ System logowania
+
+## GitHub i Wsparcie
+
+- **Repozytorium**: [https://github.com/pavelzin/indexfixer](https://github.com/pavelzin/indexfixer)
+- **Issues**: Zgłoś błędy i sugestie w GitHub Issues
+- **Dokumentacja**: Pełna dokumentacja w README
+- **Autor**: [Pawel Zinkiewicz](https://bynajmniej.pl)
+
+## Licencja
+
+MIT License - możesz swobodnie używać, modyfikować i dystrybuować tę wtyczkę. 
