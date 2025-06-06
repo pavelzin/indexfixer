@@ -28,7 +28,7 @@ Wtyczka WordPress do sprawdzania statusu indeksowania URL-i w Google Search Cons
 - **Automatyczne sprawdzanie** co 6 godzin
 - **Eksport do CSV**
 - **Szczegółowe logi**
-- **Limit URL-ów** (domyślnie 100, konfigurowalny)
+- **Limit URL-ów** (domyślnie 500, konfigurowalny)
 
 ## 📋 Wymagania
 
@@ -77,7 +77,7 @@ Wtyczka WordPress do sprawdzania statusu indeksowania URL-i w Google Search Cons
 
 ### Masowe sprawdzanie
 1. Kliknij **Odśwież dane** w dashboardzie
-2. Wtyczka sprawdzi wszystkie URL-e (limit 100)
+2. Wtyczka sprawdzi wszystkie URL-e (limit 500)
 3. Wyniki pojawią się w tabeli
 
 ### Filtrowanie i sortowanie

@@ -61,10 +61,29 @@ class IndexFixer_Dashboard {
             INDEXFIXER_VERSION
         );
         
+        // Próbuj załadować Chart.js z CDN, jeśli nie uda się - pomiń
+        wp_enqueue_script(
+            'chart-js',
+            'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js',
+            array(),
+            '3.9.1',
+            true
+        );
+        
+        // Dodaj fallback script inline
+        wp_add_inline_script('indexfixer-admin', '
+            // Sprawdź czy Chart.js się załadował
+            document.addEventListener("DOMContentLoaded", function() {
+                if (typeof Chart === "undefined") {
+                    console.warn("Chart.js nie załadował się z CDN");
+                }
+            });
+        ');
+        
         wp_enqueue_script(
             'indexfixer-admin',
             plugins_url('assets/js/admin.js', dirname(__FILE__)),
-            array('jquery'),
+            array('jquery', 'chart-js'),
             INDEXFIXER_VERSION,
             true
         );
@@ -72,7 +91,8 @@ class IndexFixer_Dashboard {
         // Dodaj dane dla AJAX
         wp_localize_script('indexfixer-admin', 'indexfixer', array(
             'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('indexfixer_nonce')
+            'nonce' => wp_create_nonce('indexfixer_nonce'),
+            'stats' => isset($stats) ? $stats : array()
         ));
     }
     
@@ -122,8 +142,83 @@ class IndexFixer_Dashboard {
         $urls = IndexFixer_Fetch_URLs::get_all_urls();
         $url_statuses = array();
         
+        // Statystyki
+        $stats = array(
+            'total' => count($urls),
+            'checked' => 0,
+            'indexed' => 0,
+            'not_indexed' => 0,
+            'discovered' => 0,
+            'excluded' => 0,
+            'unknown' => 0,
+            'pass' => 0,
+            'neutral' => 0,
+            'fail' => 0,
+            'robots_allowed' => 0,
+            'robots_disallowed' => 0
+        );
+        
         foreach ($urls as $url_data) {
-            $url_statuses[$url_data['url']] = IndexFixer_Cache::get_url_status($url_data['url']);
+            $status_data = IndexFixer_Cache::get_url_status($url_data['url']);
+            $url_statuses[$url_data['url']] = $status_data;
+            
+            if ($status_data !== false) {
+                $stats['checked']++;
+                
+                // Jeśli to stary format (string), przekonwertuj na nowy
+                if (!is_array($status_data)) {
+                    $status_data = array('simple_status' => $status_data);
+                }
+                
+                // Coverage State
+                if (isset($status_data['coverageState'])) {
+                    switch($status_data['coverageState']) {
+                        case 'Submitted and indexed':
+                            $stats['indexed']++;
+                            break;
+                        case 'Crawled - currently not indexed':
+                            $stats['not_indexed']++;
+                            break;
+                        case 'Discovered - currently not indexed':
+                            $stats['discovered']++;
+                            break;
+                        case 'Page with redirect':
+                        case 'Excluded by robots.txt':
+                        case 'Blocked due to unauthorized request (401)':
+                        case 'Not found (404)':
+                            $stats['excluded']++;
+                            break;
+                        default:
+                            $stats['unknown']++;
+                    }
+                }
+                
+                // Verdict
+                if (isset($status_data['verdict'])) {
+                    switch(strtolower($status_data['verdict'])) {
+                        case 'pass':
+                            $stats['pass']++;
+                            break;
+                        case 'neutral':
+                            $stats['neutral']++;
+                            break;
+                        case 'fail':
+                            $stats['fail']++;
+                            break;
+                    }
+                }
+                
+                // Robots.txt
+                if (isset($status_data['robotsTxtState'])) {
+                    if ($status_data['robotsTxtState'] === 'ALLOWED') {
+                        $stats['robots_allowed']++;
+                    } else {
+                        $stats['robots_disallowed']++;
+                    }
+                }
+            } else {
+                $stats['unknown']++;
+            }
         }
         
         // Wyświetl komunikaty
@@ -229,6 +324,12 @@ class IndexFixer_Dashboard {
         .wp-list-table th.sorted-desc::after { content: " ↓"; color: #0073aa; }
         .indexfixer-filters select { margin-right: 10px; min-width: 150px; }
         </style>';
+        
+        // Upewnij się że skrypty są załadowane
+        wp_enqueue_script('indexfixer-admin');
+        
+        // Przekaż statystyki do JS
+        wp_localize_script('indexfixer-admin', 'indexfixer_stats', $stats);
         
         // Wyświetl dashboard
         include INDEXFIXER_PLUGIN_DIR . 'templates/dashboard.php';

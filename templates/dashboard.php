@@ -23,16 +23,94 @@ if (!defined('ABSPATH')) {
         </div>
     <?php endif; ?>
     
-    <div class="indexfixer-single-check">
-        <h2>Sprawdź pojedynczy URL</h2>
-        <div class="single-url-form">
-            <input type="url" id="single-url-input" placeholder="https://example.com/strona/" class="regular-text">
-            <button type="button" id="check-single-url" class="button button-primary">
-                Sprawdź URL
-            </button>
-            <span id="single-url-loading" style="display: none;">Sprawdzam...</span>
+    <!-- Statystyki -->
+    <div style="margin-bottom: 20px; padding: 20px; background: #fff; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
+        <h2 style="margin-top: 0; margin-bottom: 20px; color: #23282d;">📊 Statystyki URL-ów</h2>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
+            <div style="padding: 20px; background: #f8f9fa; border: 1px solid #e1e5e9; border-left: 4px solid #0073aa; border-radius: 4px; text-align: center;">
+                <div style="font-size: 36px; font-weight: bold; margin-bottom: 8px; color: #23282d;"><?php echo $stats['total']; ?></div>
+                <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Łącznie URL-ów</div>
+            </div>
+            
+            <div style="padding: 20px; background: #f8f9fa; border: 1px solid #e1e5e9; border-left: 4px solid #0085ba; border-radius: 4px; text-align: center;">
+                <div style="font-size: 36px; font-weight: bold; margin-bottom: 8px; color: #23282d;"><?php echo $stats['checked']; ?></div>
+                <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Sprawdzonych</div>
+                <div style="font-size: 12px; color: #999; font-weight: 500;"><?php echo $stats['total'] > 0 ? round(($stats['checked'] / $stats['total']) * 100, 1) : 0; ?>%</div>
+            </div>
+            
+            <div style="padding: 20px; background: #f8f9fa; border: 1px solid #e1e5e9; border-left: 4px solid #46b450; border-radius: 4px; text-align: center;">
+                <div style="font-size: 36px; font-weight: bold; margin-bottom: 8px; color: #23282d;"><?php echo $stats['indexed']; ?></div>
+                <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Zaindeksowanych</div>
+                <div style="font-size: 12px; color: #999; font-weight: 500;"><?php echo $stats['total'] > 0 ? round(($stats['indexed'] / $stats['total']) * 100, 1) : 0; ?>%</div>
+            </div>
+            
+            <div style="padding: 20px; background: #f8f9fa; border: 1px solid #e1e5e9; border-left: 4px solid #dc3232; border-radius: 4px; text-align: center;">
+                <div style="font-size: 36px; font-weight: bold; margin-bottom: 8px; color: #23282d;"><?php echo $stats['not_indexed']; ?></div>
+                <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Nie zaindeksowanych</div>
+                <div style="font-size: 12px; color: #999; font-weight: 500;"><?php echo $stats['total'] > 0 ? round(($stats['not_indexed'] / $stats['total']) * 100, 1) : 0; ?>%</div>
+            </div>
+            
+            <div style="padding: 20px; background: #f8f9fa; border: 1px solid #e1e5e9; border-left: 4px solid #ffb900; border-radius: 4px; text-align: center;">
+                <div style="font-size: 36px; font-weight: bold; margin-bottom: 8px; color: #23282d;"><?php echo $stats['discovered']; ?></div>
+                <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Odkrytych</div>
+                <div style="font-size: 12px; color: #999; font-weight: 500;"><?php echo $stats['total'] > 0 ? round(($stats['discovered'] / $stats['total']) * 100, 1) : 0; ?>%</div>
+            </div>
+            
+            <div style="padding: 20px; background: #f8f9fa; border: 1px solid #e1e5e9; border-left: 4px solid #666; border-radius: 4px; text-align: center;">
+                <div style="font-size: 36px; font-weight: bold; margin-bottom: 8px; color: #23282d;"><?php echo $stats['excluded']; ?></div>
+                <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Wykluczonych</div>
+                <div style="font-size: 12px; color: #999; font-weight: 500;"><?php echo $stats['total'] > 0 ? round(($stats['excluded'] / $stats['total']) * 100, 1) : 0; ?>%</div>
+            </div>
         </div>
-        <div id="single-url-result" style="display: none; margin-top: 15px;"></div>
+        
+        <!-- Wykresy -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
+            <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 4px; border: 1px solid #e1e5e9; width: 350px; height: 400px; overflow: hidden;">
+                <h3 style="margin-top: 0; margin-bottom: 15px; color: #23282d; font-size: 16px;">Status indeksowania</h3>
+                <div style="width: 300px; height: 300px; margin: 0 auto; border: 1px solid #ccc;">
+                    <canvas id="indexing-chart" width="300" height="300" style="width: 300px !important; height: 300px !important; display: block; background: #fff;"></canvas>
+                </div>
+            </div>
+            
+            <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 4px; border: 1px solid #e1e5e9; width: 350px; height: 400px; overflow: hidden;">
+                <h3 style="margin-top: 0; margin-bottom: 15px; color: #23282d; font-size: 16px;">Verdict Google</h3>
+                <div style="width: 300px; height: 300px; margin: 0 auto; border: 1px solid #ccc;">
+                    <canvas id="verdict-chart" width="300" height="300" style="width: 300px !important; height: 300px !important; display: block; background: #fff;"></canvas>
+                </div>
+                
+                <!-- Debug info -->
+                <div id="debug-info" style="margin-top: 10px; font-size: 12px; color: #666;">
+                    <div>Chart.js: <span id="chart-status">Sprawdzam...</span></div>
+                    <div>Stats: <span id="stats-status">Sprawdzam...</span></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Debug script -->
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Debug info
+            document.getElementById('chart-status').textContent = typeof Chart !== 'undefined' ? 'OK' : 'BRAK';
+            document.getElementById('stats-status').textContent = typeof indexfixer_stats !== 'undefined' ? 'OK' : 'BRAK';
+            
+            console.log('=== DEBUG WYKRESÓW ===');
+            console.log('Chart.js loaded:', typeof Chart !== 'undefined');
+            console.log('indexfixer_stats:', typeof indexfixer_stats !== 'undefined' ? indexfixer_stats : 'UNDEFINED');
+            
+            // Sprawdź czy canvas istnieją
+            const canvas1 = document.getElementById('indexing-chart');
+            const canvas2 = document.getElementById('verdict-chart');
+            console.log('Canvas 1:', canvas1 ? 'OK' : 'BRAK');
+            console.log('Canvas 2:', canvas2 ? 'OK' : 'BRAK');
+            
+            // Jeśli Chart.js nie działa, pokaż fallback
+            if (typeof Chart === 'undefined') {
+                if (canvas1) canvas1.getContext('2d').fillText('Chart.js nie załadowany', 50, 150);
+                if (canvas2) canvas2.getContext('2d').fillText('Chart.js nie załadowany', 50, 150);
+            }
+        });
+        </script>
     </div>
 
     <div class="indexfixer-filters">
@@ -95,9 +173,18 @@ if (!defined('ABSPATH')) {
                     ?>
                     <tr data-status="<?php echo esc_attr($simple_status); ?>">
                         <td>
-                            <a href="<?php echo esc_url($url_data['url']); ?>" target="_blank">
-                                <?php echo esc_html($url_data['url']); ?>
-                            </a>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="flex: 1; word-break: break-all;">
+                                    <?php echo esc_html($url_data['url']); ?>
+                                </span>
+                                <button type="button" 
+                                        class="button button-small check-single-url" 
+                                        data-url="<?php echo esc_attr($url_data['url']); ?>"
+                                        title="Sprawdź status tego URL"
+                                        style="flex-shrink: 0;">
+                                    🔄
+                                </button>
+                            </div>
                         </td>
                         <td>
                             <?php if (isset($status_data['verdict']) && $status_data['verdict'] !== 'unknown'): ?>

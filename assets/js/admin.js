@@ -81,30 +81,14 @@ jQuery(document).ready(function($) {
         $tbody.empty().append(rows);
     });
     
-    // Sprawdzanie pojedynczego URL-a
-    $('#check-single-url').on('click', function() {
+    // Sprawdzanie pojedynczego URL-a z tabeli
+    $(document).on('click', '.check-single-url', function() {
         var $button = $(this);
-        var $input = $('#single-url-input');
-        var $loading = $('#single-url-loading');
-        var $result = $('#single-url-result');
-        var url = $input.val().trim();
+        var url = $button.data('url');
+        var $row = $button.closest('tr');
+        var originalIcon = $button.text();
         
-        if (!url) {
-            alert('Podaj URL do sprawdzenia');
-            return;
-        }
-        
-        // Walidacja URL
-        try {
-            new URL(url);
-        } catch (e) {
-            alert('Podaj prawidłowy URL (z http:// lub https://)');
-            return;
-        }
-        
-        $button.prop('disabled', true);
-        $loading.show();
-        $result.hide();
+        $button.prop('disabled', true).text('⏳');
         
         $.ajax({
             url: indexfixer.ajax_url,
@@ -117,74 +101,58 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success) {
                     var status = response.data.status;
-                    var html = '<div class="single-url-details">';
-                    html += '<h3>Wyniki dla: <a href="' + response.data.url + '" target="_blank">' + response.data.url + '</a></h3>';
                     
-                    // Verdict
+                    // Aktualizuj wiersz w tabeli
                     if (status.verdict && status.verdict !== 'unknown') {
-                        var verdictClass = 'verdict-' + status.verdict.toLowerCase();
-                        html += '<div class="verdict-result"><strong>Verdict:</strong> <span class="' + verdictClass + '">' + status.verdict + '</span></div>';
+                        var verdictHtml = '<span class="verdict-' + status.verdict.toLowerCase() + '">' + status.verdict + '</span>';
+                        if (status.indexingState && status.indexingState !== 'unknown') {
+                            var indexingClass = status.indexingState === 'INDEXING_ALLOWED' ? 'good' : 'bad';
+                            verdictHtml += '<br><small class="' + indexingClass + '">' + status.indexingState + '</small>';
+                        }
+                        $row.find('td:nth-child(2)').html(verdictHtml);
                     }
                     
-                    // Coverage State
                     if (status.coverageState && status.coverageState !== 'unknown') {
-                        html += '<div class="coverage-result"><strong>Coverage State:</strong> ' + status.coverageState + '</div>';
+                        $row.find('td:nth-child(3)').html('<span class="coverage-state">' + status.coverageState + '</span>');
                     }
                     
-                    // Technical details
-                    html += '<div class="technical-details">';
                     if (status.robotsTxtState && status.robotsTxtState !== 'unknown') {
                         var robotsClass = status.robotsTxtState === 'ALLOWED' ? 'good' : 'bad';
-                        html += '<div><span class="' + robotsClass + '">robots.txt: ' + status.robotsTxtState + '</span></div>';
+                        $row.find('td:nth-child(4)').html('<span class="' + robotsClass + '">' + status.robotsTxtState + '</span>');
                     }
-                    if (status.indexingState && status.indexingState !== 'unknown') {
-                        var indexingClass = status.indexingState === 'INDEXING_ALLOWED' ? 'good' : 'bad';
-                        html += '<div><span class="' + indexingClass + '">indexingState: ' + status.indexingState + '</span></div>';
-                    }
-                    if (status.pageFetchState && status.pageFetchState !== 'unknown') {
-                        var fetchClass = status.pageFetchState === 'SUCCESSFUL' ? 'good' : 'bad';
-                        html += '<div><span class="' + fetchClass + '">pageFetchState: ' + status.pageFetchState + '</span></div>';
-                    }
-                    if (status.crawledAs && status.crawledAs !== 'unknown') {
-                        html += '<div>Crawled as: ' + status.crawledAs + '</div>';
-                    }
-                    html += '</div>';
                     
-                    // Last crawl time
                     if (status.lastCrawlTime && status.lastCrawlTime !== 'unknown') {
                         var crawlDate = new Date(status.lastCrawlTime).toLocaleDateString();
-                        html += '<div class="crawl-time"><strong>📆 Data ostatniego crawl\'a:</strong> ' + crawlDate + '</div>';
+                        $row.find('td:nth-child(5)').text(crawlDate);
                     }
-                    
-                    // Referring URLs
-                    if (status.referringUrls && status.referringUrls.length > 0) {
-                        html += '<div class="referring-urls"><strong>🔗 Linki wewnętrzne:</strong><ul>';
-                        for (var i = 0; i < Math.min(status.referringUrls.length, 5); i++) {
-                            html += '<li>' + status.referringUrls[i] + '</li>';
-                        }
-                        if (status.referringUrls.length > 5) {
-                            html += '<li>... i ' + (status.referringUrls.length - 5) + ' więcej</li>';
-                        }
-                        html += '</ul></div>';
-                    }
-                    
-                    html += '</div>';
-                    $result.html(html).show();
                     
                     // Odśwież logi
                     if (response.data.logs) {
                         $('#indexfixer-logs-content').html(response.data.logs);
                     }
+                    
+                    // Pokaż komunikat sukcesu
+                    $button.text('✅').prop('title', 'URL sprawdzony pomyślnie');
+                    setTimeout(function() {
+                        $button.text(originalIcon).prop('title', 'Sprawdź status tego URL');
+                    }, 2000);
                 } else {
                     alert('Błąd: ' + response.data);
+                    $button.text('❌').prop('title', 'Błąd podczas sprawdzania');
+                    setTimeout(function() {
+                        $button.text(originalIcon).prop('title', 'Sprawdź status tego URL');
+                    }, 2000);
                 }
             },
             error: function() {
                 alert('Wystąpił błąd podczas sprawdzania URL');
+                $button.text('❌').prop('title', 'Błąd podczas sprawdzania');
+                setTimeout(function() {
+                    $button.text(originalIcon).prop('title', 'Sprawdź status tego URL');
+                }, 2000);
             },
             complete: function() {
                 $button.prop('disabled', false);
-                $loading.hide();
             }
         });
     });
@@ -261,4 +229,133 @@ jQuery(document).ready(function($) {
             }
         });
     });
+    
+    // Inicjalizacja wykresów
+    console.log('Chart.js dostępny:', typeof Chart !== 'undefined');
+    console.log('indexfixer_stats dostępny:', typeof indexfixer_stats !== 'undefined');
+    
+    if (typeof Chart !== 'undefined' && typeof indexfixer_stats !== 'undefined') {
+        initCharts();
+    } else {
+        console.error('Problem z ładowaniem:', {
+            'Chart.js': typeof Chart,
+            'indexfixer_stats': typeof indexfixer_stats
+        });
+        
+        // Fallback - pokaż komunikat
+        const chartContainers = document.querySelectorAll('.chart-wrapper canvas');
+        chartContainers.forEach(canvas => {
+            const wrapper = canvas.parentElement;
+            wrapper.innerHTML = '<p>⚠️ Nie można załadować wykresów</p>';
+        });
+    }
+    
+    function initCharts() {
+        const stats = indexfixer_stats;
+        console.log('IndexFixer Stats:', stats);
+        
+        // Wykres statusu indeksowania
+        const indexingCtx = document.getElementById('indexing-chart');
+        if (indexingCtx) {
+            new Chart(indexingCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Zaindeksowane', 'Nie zaindeksowane', 'Odkryte', 'Wykluczone', 'Nieznane'],
+                    datasets: [{
+                        data: [
+                            stats.indexed || 0,
+                            stats.not_indexed || 0,
+                            stats.discovered || 0,
+                            stats.excluded || 0,
+                            stats.unknown || 0
+                        ],
+                        backgroundColor: [
+                            '#46b450',  // zielony - zaindeksowane
+                            '#dc3232',  // czerwony - nie zaindeksowane
+                            '#ffb900',  // żółty - odkryte
+                            '#666666',  // szary - wykluczone
+                            '#cccccc'   // jasny szary - nieznane
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: false,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = stats.total || 0;
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Wykres verdict
+        const verdictCtx = document.getElementById('verdict-chart');
+        if (verdictCtx) {
+            new Chart(verdictCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Pass', 'Neutral', 'Fail', 'Niesprawdzone'],
+                    datasets: [{
+                        data: [
+                            stats.pass || 0,
+                            stats.neutral || 0,
+                            stats.fail || 0,
+                            (stats.total - stats.checked) || 0
+                        ],
+                        backgroundColor: [
+                            '#46b450',  // zielony - pass
+                            '#0073aa',  // niebieski - neutral
+                            '#dc3232',  // czerwony - fail
+                            '#cccccc'   // szary - niesprawdzone
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: false,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = stats.total || 0;
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
 }); 

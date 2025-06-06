@@ -69,7 +69,7 @@ if (!class_exists('IndexFixer_GSC_API')) {
 
 
 
-
+        
         /**
          * Próbuje sprawdzić URL z określonym formatem siteUrl
          */

@@ -373,4 +373,139 @@
     margin-bottom: 3px;
     font-size: 13px;
     color: #666;
+}
+
+/* Style dla statystyk */
+.indexfixer-stats {
+    margin-bottom: 20px;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.indexfixer-stats h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: #23282d;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    padding: 20px;
+    background: #f8f9fa;
+    border: 1px solid #e1e5e9;
+    border-radius: 4px;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.stat-card.total {
+    border-left: 4px solid #0073aa;
+}
+
+.stat-card.checked {
+    border-left: 4px solid #0085ba;
+}
+
+.stat-card.indexed {
+    border-left: 4px solid #46b450;
+}
+
+.stat-card.not-indexed {
+    border-left: 4px solid #dc3232;
+}
+
+.stat-card.discovered {
+    border-left: 4px solid #ffb900;
+}
+
+.stat-card.excluded {
+    border-left: 4px solid #666;
+}
+
+.stat-number {
+    font-size: 36px;
+    font-weight: bold;
+    line-height: 1;
+    margin-bottom: 8px;
+    color: #23282d;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 5px;
+}
+
+.stat-percentage {
+    font-size: 12px;
+    color: #999;
+    font-weight: 500;
+}
+
+/* Style dla wykresów */
+.charts-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 30px;
+    margin-top: 20px;
+}
+
+.chart-wrapper {
+    text-align: center;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #e1e5e9;
+    width: 350px;
+    height: 400px;
+    overflow: hidden;
+    position: relative;
+}
+
+.chart-wrapper h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #23282d;
+    font-size: 16px;
+}
+
+.chart-wrapper canvas {
+    width: 300px !important;
+    height: 300px !important;
+    max-width: 300px !important;
+    max-height: 300px !important;
+}
+
+/* Responsywność */
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+    }
+    
+    .stat-card {
+        padding: 15px;
+    }
+    
+    .stat-number {
+        font-size: 28px;
+    }
+    
+    .charts-container {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
 } 

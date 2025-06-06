@@ -3,7 +3,7 @@
  * Plugin Name: IndexFixer
  * Plugin URI: https://github.com/pavelzin/indexfixer.git
  * Description: Wtyczka do sprawdzania statusu indeksowania URL-i w Google Search Console
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Pawel Zinkiewicz
  * Author URI: https://bynajmniej.pl
  * License: GPL v2 or later
@@ -23,9 +23,12 @@ if (!function_exists('add_action')) {
 }
 
 // Definicje stałych
-define('INDEXFIXER_VERSION', '1.0.0');
+define('INDEXFIXER_VERSION', '1.0.2');
 define('INDEXFIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INDEXFIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
+
+// Konfiguracja wtyczki
+define('INDEXFIXER_URL_LIMIT', 500); // Maksymalna liczba URL-ów do sprawdzania
 
 // Dołączanie plików
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/logger.php';
@@ -108,7 +111,7 @@ function indexfixer_ajax_export_csv() {
     }
     
     // Użyj tego samego limitu co w głównej funkcji
-    $url_limit = apply_filters('indexfixer_url_limit', 100);
+    $url_limit = apply_filters('indexfixer_url_limit', INDEXFIXER_URL_LIMIT);
     $all_urls = IndexFixer_Fetch_URLs::get_all_urls();
     $urls = array_slice($all_urls, 0, $url_limit);
     $gsc_api = new IndexFixer_GSC_API();
@@ -277,7 +280,7 @@ function indexfixer_check_urls() {
     }
     
     // Konfigurowalny limit URL-i do sprawdzenia
-    $url_limit = apply_filters('indexfixer_url_limit', 20); // Domyślnie 20, można zmienić przez filter
+    $url_limit = apply_filters('indexfixer_url_limit', INDEXFIXER_URL_LIMIT); // Domyślnie 500, można zmienić przez filter
     
     $all_urls = IndexFixer_Fetch_URLs::get_all_urls();
     $urls = array_slice($all_urls, 0, $url_limit);
