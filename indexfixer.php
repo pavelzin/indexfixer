@@ -23,7 +23,7 @@ if (!function_exists('add_action')) {
 }
 
 // Definicje stałych
-define('INDEXFIXER_VERSION', '1.0.34');
+define('INDEXFIXER_VERSION', '1.0.35');
 define('INDEXFIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INDEXFIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -47,6 +47,9 @@ require_once INDEXFIXER_PLUGIN_DIR . 'admin/dashboard.php';
 
 // Inicjalizacja wtyczki
 function indexfixer_init() {
+    // Sprawdź i zaplanuj brakujące crony przy każdym ładowaniu
+    indexfixer_ensure_crons_scheduled();
+    
     // Inicjalizacja dashboardu
     new IndexFixer_Dashboard();
     
@@ -71,6 +74,21 @@ function indexfixer_init() {
     register_deactivation_hook(__FILE__, 'indexfixer_deactivate');
 }
 add_action('plugins_loaded', 'indexfixer_init');
+
+// Funkcja sprawdzająca i planująca brakujące crony
+function indexfixer_ensure_crons_scheduled() {
+    // 1. Sprawdź główny cron sprawdzania URL-ów
+    if (!wp_next_scheduled('indexfixer_check_urls_event')) {
+        wp_schedule_event(time(), 'daily', 'indexfixer_check_urls_event');
+        IndexFixer_Logger::log('✅ Zaplanowano główny cron sprawdzania URL-ów', 'info');
+    }
+    
+    // 2. Sprawdź cron odnawiania tokenów
+    if (!wp_next_scheduled('indexfixer_auto_refresh_tokens')) {
+        wp_schedule_event(time(), 'thirty_minutes', 'indexfixer_auto_refresh_tokens');
+        IndexFixer_Logger::log('✅ Zaplanowano cron odnawiania tokenów (co 30 min)', 'success');
+    }
+}
 
 // Rejestracja skryptów i stylów
 function indexfixer_register_scripts() {
@@ -286,14 +304,32 @@ function indexfixer_ajax_check_single_url() {
 
 // Aktywacja wtyczki
 function indexfixer_activate() {
+    IndexFixer_Logger::log('🚀 AKTYWACJA PLUGINU - sprawdzam crony...', 'info');
+    
     if (!wp_next_scheduled('indexfixer_check_urls_event')) {
-        wp_schedule_event(time(), 'daily', 'indexfixer_check_urls_event');
+        $result = wp_schedule_event(time(), 'daily', 'indexfixer_check_urls_event');
+        if ($result) {
+            IndexFixer_Logger::log('✅ Zaplanowano główny cron (daily)', 'success');
+        } else {
+            IndexFixer_Logger::log('❌ Błąd planowania głównego crona', 'error');
+        }
+    } else {
+        IndexFixer_Logger::log('ℹ️ Główny cron już istnieje', 'info');
     }
     
     // Nowy harmonogram do odnawiania tokenów co 30 minut
     if (!wp_next_scheduled('indexfixer_auto_refresh_tokens')) {
-        wp_schedule_event(time(), 'thirty_minutes', 'indexfixer_auto_refresh_tokens');
+        $result = wp_schedule_event(time(), 'thirty_minutes', 'indexfixer_auto_refresh_tokens');
+        if ($result) {
+            IndexFixer_Logger::log('✅ Zaplanowano cron tokenów (thirty_minutes)', 'success');
+        } else {
+            IndexFixer_Logger::log('❌ Błąd planowania crona tokenów - może brak interwału thirty_minutes?', 'error');
+        }
+    } else {
+        IndexFixer_Logger::log('ℹ️ Cron tokenów już istnieje', 'info');
     }
+    
+    IndexFixer_Logger::log('🏁 AKTYWACJA ZAKOŃCZONA', 'info');
 }
 
 // Deaktywacja wtyczki

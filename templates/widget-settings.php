@@ -186,6 +186,26 @@ if (!defined('ABSPATH')) {
         </div>
         
         <div style="margin-bottom: 20px;">
+            <h3>🔄 Test systemu aktualizacji</h3>
+            <p>Sprawdź czy system automatycznych aktualizacji przez GitHub działa poprawnie.</p>
+            
+            <button type="button" id="test-updater" class="button button-secondary" style="background: #0073aa; border-color: #0073aa; color: white;">
+                🔄 Test aktualizacji
+            </button>
+            <div id="updater-test-result" style="margin-top: 10px;"></div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <h3>⏰ Planowanie crona odnawiania tokenów</h3>
+            <p>Jeśli nie widzisz crona odnawiania tokenów w pluginie do cronów, zaplanuj go ręcznie.</p>
+            
+            <button type="button" id="schedule-token-cron" class="button button-secondary" style="background: #46b450; border-color: #46b450; color: white;">
+                ⏰ Zaplanuj cron tokenów
+            </button>
+            <div id="schedule-cron-result" style="margin-top: 10px;"></div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
             <button type="button" id="refresh-schedule-status" class="button">
                 🔄 Odśwież status
             </button>

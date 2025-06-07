@@ -37,6 +37,8 @@ class IndexFixer_Dashboard {
         add_action('wp_ajax_indexfixer_get_schedule_status', array($this, 'ajax_get_schedule_status'));
         add_action('wp_ajax_indexfixer_save_today_stats', array($this, 'ajax_save_today_stats'));
         add_action('wp_ajax_indexfixer_test_refresh_token', array($this, 'ajax_test_refresh_token'));
+        add_action('wp_ajax_indexfixer_test_updater', array($this, 'ajax_test_updater'));
+        add_action('wp_ajax_indexfixer_schedule_token_cron', array($this, 'ajax_schedule_token_cron'));
     }
     
     /**
@@ -624,18 +626,78 @@ class IndexFixer_Dashboard {
      * AJAX migracja danych z wp_options do tabeli
      */
     public function ajax_migrate_data() {
-        check_ajax_referer('indexfixer_migrate', 'nonce');
-        
+        // Sprawdź uprawnienia i nonce
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Brak uprawnień');
         }
         
-        try {
-            IndexFixer_Database::migrate_from_cache();
-            wp_send_json_success(array('message' => 'Migracja danych zakończona pomyślnie'));
-        } catch (Exception $e) {
-            wp_send_json_error('Błąd migracji: ' . $e->getMessage());
+        check_ajax_referer('indexfixer_nonce', 'nonce');
+        
+        IndexFixer_Logger::log('🔄 Rozpoczynam migrację danych z wp_options do tabeli...', 'info');
+        
+        // Pobierz wszystkie URL-e ze strony
+        $all_urls = IndexFixer_Fetch_URLs::get_all_urls();
+        $migrated = 0;
+        $skipped = 0;
+        $errors = 0;
+        
+        foreach ($all_urls as $url_data) {
+            try {
+                // Sprawdź czy URL już jest w tabeli
+                $existing = IndexFixer_Database::get_url_status($url_data['url']);
+                if ($existing) {
+                    $skipped++;
+                    continue;
+                }
+                
+                // Sprawdź czy URL ma dane w cache (stary system)
+                $cached_status = IndexFixer_Cache::get_url_status($url_data['url']);
+                if ($cached_status !== false) {
+                    // Konwertuj stare dane na nowy format
+                    $status_data = array(
+                        'simple_status' => is_array($cached_status) && isset($cached_status['simple_status']) ? $cached_status['simple_status'] : $cached_status,
+                        'verdict' => is_array($cached_status) && isset($cached_status['verdict']) ? $cached_status['verdict'] : null,
+                        'coverageState' => is_array($cached_status) && isset($cached_status['coverageState']) ? $cached_status['coverageState'] : null,
+                        'robotsTxtState' => is_array($cached_status) && isset($cached_status['robotsTxtState']) ? $cached_status['robotsTxtState'] : null,
+                        'indexingState' => is_array($cached_status) && isset($cached_status['indexingState']) ? $cached_status['indexingState'] : null,
+                        'pageFetchState' => is_array($cached_status) && isset($cached_status['pageFetchState']) ? $cached_status['pageFetchState'] : null,
+                        'lastCrawlTime' => is_array($cached_status) && isset($cached_status['lastCrawlTime']) ? $cached_status['lastCrawlTime'] : null,
+                        'crawledAs' => is_array($cached_status) && isset($cached_status['crawledAs']) ? $cached_status['crawledAs'] : null,
+                    );
+                    
+                    // Znajdź post_id
+                    $post_id = url_to_postid($url_data['url']);
+                    
+                    // Zapisz w nowej tabeli
+                    if (IndexFixer_Database::save_url_status($post_id ?: 0, $url_data['url'], $status_data)) {
+                        $migrated++;
+                    } else {
+                        $errors++;
+                    }
+                } else {
+                    // Dodaj jako unknown dla przyszłego sprawdzenia
+                    $post_id = url_to_postid($url_data['url']);
+                    if (IndexFixer_Database::save_url_status($post_id ?: 0, $url_data['url'], array('simple_status' => 'unknown'))) {
+                        $migrated++;
+                    } else {
+                        $errors++;
+                    }
+                }
+                
+            } catch (Exception $e) {
+                IndexFixer_Logger::log("❌ Błąd migracji URL {$url_data['url']}: " . $e->getMessage(), 'error');
+                $errors++;
+            }
         }
+        
+        IndexFixer_Logger::log("✅ Migracja zakończona: migrated=$migrated, skipped=$skipped, errors=$errors", 'success');
+        
+        wp_send_json_success(array(
+            'message' => "Migracja zakończona: $migrated zmigrowanych, $skipped pominiętych, $errors błędów",
+            'migrated' => $migrated,
+            'skipped' => $skipped,
+            'errors' => $errors
+        ));
     }
     
     /**
@@ -1100,6 +1162,122 @@ class IndexFixer_Dashboard {
         } else {
             IndexFixer_Logger::log('❌ Nie udało się odświeżyć tokenu', 'error');
             wp_send_json_error('Nie udało się odświeżyć tokenu - sprawdź logi');
+        }
+    }
+    
+    /**
+     * AJAX test systemu aktualizacji
+     */
+    public function ajax_test_updater() {
+        // Sprawdź uprawnienia i nonce
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        check_ajax_referer('indexfixer_nonce', 'nonce');
+        
+        IndexFixer_Logger::log('🔄 Testowanie systemu aktualizacji...', 'info');
+        
+        try {
+            // Testuj GitHub API bezpośrednio
+            $github_url = 'https://api.github.com/repos/pavelzin/indexfixer/releases/latest';
+            $request = wp_remote_get($github_url, array('timeout' => 30));
+            
+            if (is_wp_error($request)) {
+                throw new Exception('Błąd połączenia z GitHub API: ' . $request->get_error_message());
+            }
+            
+            $response_code = wp_remote_retrieve_response_code($request);
+            $body = wp_remote_retrieve_body($request);
+            
+            IndexFixer_Logger::log("GitHub API Response Code: $response_code", 'info');
+            
+            if ($response_code !== 200) {
+                throw new Exception("GitHub API zwróciło kod: $response_code");
+            }
+            
+            $data = json_decode($body, true);
+            if (!$data) {
+                throw new Exception('Nie można parsować odpowiedzi GitHub API');
+            }
+            
+            $latest_version = isset($data['tag_name']) ? ltrim($data['tag_name'], 'v') : 'unknown';
+            $current_version = INDEXFIXER_VERSION;
+            $download_url = isset($data['assets'][0]['browser_download_url']) ? $data['assets'][0]['browser_download_url'] : null;
+            
+            IndexFixer_Logger::log("Aktualna wersja: $current_version", 'info');
+            IndexFixer_Logger::log("Najnowsza wersja: $latest_version", 'info');
+            IndexFixer_Logger::log("Download URL: " . ($download_url ?: 'Brak'), 'info');
+            
+            // Test czy WordPress wykrywa aktualizację
+            delete_site_transient('update_plugins');
+            wp_update_plugins();
+            
+            $updates = get_site_transient('update_plugins');
+            $plugin_slug = plugin_basename(INDEXFIXER_PLUGIN_DIR . 'indexfixer.php');
+            $update_available = isset($updates->response[$plugin_slug]);
+            
+            IndexFixer_Logger::log("WordPress wykrywa aktualizację: " . ($update_available ? 'TAK' : 'NIE'), $update_available ? 'success' : 'warning');
+            
+            wp_send_json_success(array(
+                'current_version' => $current_version,
+                'latest_version' => $latest_version,
+                'update_available' => $update_available,
+                'download_url' => $download_url,
+                'github_response' => $data
+            ));
+            
+        } catch (Exception $e) {
+            IndexFixer_Logger::log('❌ Błąd testowania aktualizacji: ' . $e->getMessage(), 'error');
+            wp_send_json_error('Błąd: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * AJAX planowanie crona odnawiania tokenów
+     */
+    public function ajax_schedule_token_cron() {
+        // Sprawdź uprawnienia i nonce
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        check_ajax_referer('indexfixer_nonce', 'nonce');
+        
+        IndexFixer_Logger::log('🔄 Planowanie crona odnawiania tokenów...', 'info');
+        
+        try {
+            // Sprawdź czy cron już istnieje
+            $existing = wp_next_scheduled('indexfixer_auto_refresh_tokens');
+            if ($existing) {
+                IndexFixer_Logger::log("✅ Cron już zaplanowany na: " . date('Y-m-d H:i:s', $existing), 'info');
+                wp_send_json_success(array(
+                    'message' => 'Cron już był zaplanowany',
+                    'next_run' => date('Y-m-d H:i:s', $existing),
+                    'status' => 'already_scheduled'
+                ));
+                return;
+            }
+            
+            // Zaplanuj nowy cron
+            $scheduled = wp_schedule_event(time(), 'thirty_minutes', 'indexfixer_auto_refresh_tokens');
+            
+            if ($scheduled === false) {
+                throw new Exception('Nie udało się zaplanować crona');
+            }
+            
+            $next_run = wp_next_scheduled('indexfixer_auto_refresh_tokens');
+            IndexFixer_Logger::log("✅ Cron zaplanowany pomyślnie na: " . date('Y-m-d H:i:s', $next_run), 'success');
+            
+            wp_send_json_success(array(
+                'message' => 'Cron zaplanowany pomyślnie!',
+                'next_run' => date('Y-m-d H:i:s', $next_run),
+                'status' => 'scheduled'
+            ));
+            
+        } catch (Exception $e) {
+            IndexFixer_Logger::log('❌ Błąd planowania crona: ' . $e->getMessage(), 'error');
+            wp_send_json_error('Błąd: ' . $e->getMessage());
         }
     }
 } 

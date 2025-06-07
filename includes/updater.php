@@ -32,28 +32,42 @@ class IndexFixer_Updater {
      * Sprawdza czy jest dostępna nowa wersja
      */
     public function check_for_update($transient) {
+        IndexFixer_Logger::log("🔍 CHECK_FOR_UPDATE wywołane", 'info');
+        
         if (empty($transient->checked)) {
+            IndexFixer_Logger::log("⚠️ Brak checked plugins w transient", 'warning');
             return $transient;
         }
+        
+        IndexFixer_Logger::log("📋 Plugin slug: {$this->plugin_slug}", 'info');
+        IndexFixer_Logger::log("📋 Checked plugins: " . implode(', ', array_keys($transient->checked)), 'info');
         
         // Sprawdź czy nasz plugin jest w liście sprawdzanych
         if (!isset($transient->checked[$this->plugin_slug])) {
+            IndexFixer_Logger::log("⚠️ Nasz plugin NIE JEST w liście sprawdzanych!", 'warning');
             return $transient;
         }
         
+        IndexFixer_Logger::log("✅ Nasz plugin jest w liście sprawdzanych", 'info');
+        
         // Pobierz informacje o najnowszej wersji z GitHub
         $remote_version = $this->get_remote_version();
+        IndexFixer_Logger::log("📊 Aktualna wersja: {$this->version}, GitHub wersja: $remote_version", 'info');
         
         if (version_compare($this->version, $remote_version, '<')) {
+            $package_url = $this->get_download_url($remote_version);
+            
             $transient->response[$this->plugin_slug] = (object) array(
                 'slug' => dirname($this->plugin_slug),
                 'plugin' => $this->plugin_slug,
                 'new_version' => $remote_version,
                 'url' => "https://github.com/{$this->github_username}/{$this->github_repo}",
-                'package' => $this->get_download_url($remote_version)
+                'package' => $package_url
             );
             
-            IndexFixer_Logger::log("🔄 Dostępna nowa wersja IndexFixer: $remote_version (aktualna: {$this->version})", 'info');
+            IndexFixer_Logger::log("🔄 DODANO AKTUALIZACJĘ: $remote_version (package: $package_url)", 'success');
+        } else {
+            IndexFixer_Logger::log("ℹ️ Brak nowszej wersji na GitHub", 'info');
         }
         
         return $transient;
@@ -82,6 +96,26 @@ class IndexFixer_Updater {
      * Generuje URL do pobrania najnowszej wersji
      */
     private function get_download_url($version) {
+        // Sprawdź czy istnieje asset w release (nasze niestandardowe archiwum)
+        $request = wp_remote_get("https://api.github.com/repos/{$this->github_username}/{$this->github_repo}/releases/tags/v{$version}");
+        
+        if (!is_wp_error($request) && wp_remote_retrieve_response_code($request) === 200) {
+            $body = wp_remote_retrieve_body($request);
+            $data = json_decode($body, true);
+            
+            // Sprawdź czy są assety (nasze ZIP-y)
+            if (isset($data['assets']) && !empty($data['assets'])) {
+                foreach ($data['assets'] as $asset) {
+                    if (strpos($asset['name'], 'IndexFixer-v') === 0 && strpos($asset['name'], '.zip') !== false) {
+                        IndexFixer_Logger::log("📦 Znaleziono niestandardowe archiwum: " . $asset['browser_download_url'], 'info');
+                        return $asset['browser_download_url'];
+                    }
+                }
+            }
+        }
+        
+        // Fallback do standardowego GitHub download
+        IndexFixer_Logger::log("📦 Używam standardowego GitHub download", 'info');
         return "https://github.com/{$this->github_username}/{$this->github_repo}/archive/refs/tags/v{$version}.zip";
     }
     
@@ -157,12 +191,17 @@ class IndexFixer_Updater {
      * Sprawdza ręcznie czy jest dostępna aktualizacja
      */
     public function force_check() {
+        IndexFixer_Logger::log("🔄 FORCE_CHECK wywoływane - czyszczę transient", 'info');
+        
         delete_site_transient('update_plugins');
         wp_update_plugins();
         
         $remote_version = $this->get_remote_version();
         
+        IndexFixer_Logger::log("📊 Force check - aktualna: {$this->version}, GitHub: $remote_version", 'info');
+        
         if (version_compare($this->version, $remote_version, '<')) {
+            IndexFixer_Logger::log("✅ Aktualizacja dostępna!", 'success');
             return array(
                 'update_available' => true,
                 'current_version' => $this->version,
@@ -171,10 +210,22 @@ class IndexFixer_Updater {
             );
         }
         
+        IndexFixer_Logger::log("ℹ️ Brak aktualizacji", 'info');
         return array(
             'update_available' => false,
             'current_version' => $this->version,
             'latest_version' => $remote_version
         );
+    }
+    
+    /**
+     * Publiczna metoda do testowania
+     */
+    public static function test_updater() {
+        global $indexfixer_updater;
+        if (!$indexfixer_updater) {
+            $indexfixer_updater = new self(INDEXFIXER_PLUGIN_DIR . 'indexfixer.php');
+        }
+        return $indexfixer_updater->force_check();
     }
 } 
