@@ -23,6 +23,8 @@ class IndexFixer_Auth_Handler {
             $this->client_secret = get_option('indexfixer_gsc_client_secret');
             $this->access_token = get_option('indexfixer_gsc_access_token');
             $this->refresh_token = get_option('indexfixer_gsc_refresh_token');
+            
+
         }
     }
     
@@ -435,11 +437,37 @@ class IndexFixer_Auth_Handler {
      * Automatyczne odnawianie tokenów (wywoływane przez cron co 30 minut)
      */
     public static function auto_refresh_tokens() {
+        IndexFixer_Logger::log('🔄 CRON: Rozpoczynam automatyczne sprawdzanie tokenów', 'info');
+        
         $auth_handler = new self();
         
+        // Jeśli dane nie zostały załadowane przez konstruktor, spróbuj załadować bezpośrednio
+        if (empty($auth_handler->client_id) && function_exists('get_option')) {
+            IndexFixer_Logger::log('⚠️ CRON: Dane nie załadowane przez konstruktor - próbuję załadować bezpośrednio', 'warning');
+            
+            $auth_handler->client_id = get_option('indexfixer_gsc_client_id');
+            $auth_handler->client_secret = get_option('indexfixer_gsc_client_secret'); 
+            $auth_handler->access_token = get_option('indexfixer_gsc_access_token');
+            $auth_handler->refresh_token = get_option('indexfixer_gsc_refresh_token');
+            
+            IndexFixer_Logger::log('✅ CRON: Dane załadowane bezpośrednio', 'info');
+        }
+        
+        // Dodaj szczegółowe logowanie co mamy załadowane
+        IndexFixer_Logger::log(sprintf('Client ID: %s', empty($auth_handler->client_id) ? 'BRAK' : 'OK'), 'info');
+        IndexFixer_Logger::log(sprintf('Client Secret: %s', empty($auth_handler->client_secret) ? 'BRAK' : 'OK'), 'info');
+        IndexFixer_Logger::log(sprintf('Access Token: %s', empty($auth_handler->access_token) ? 'BRAK' : 'OK'), 'info');
+        IndexFixer_Logger::log(sprintf('Refresh Token: %s', empty($auth_handler->refresh_token) ? 'BRAK' : 'OK'), 'info');
+        
         // Sprawdź czy mamy podstawowe dane
-        if (empty($auth_handler->client_id) || empty($auth_handler->client_secret) || empty($auth_handler->access_token)) {
-            return; // Brak konfiguracji - nie rób nic
+        if (empty($auth_handler->client_id) || empty($auth_handler->client_secret)) {
+            IndexFixer_Logger::log('❌ Brak Client ID lub Client Secret - cron przerwany. Skonfiguruj OAuth w dashboardzie IndexFixer.', 'warning');
+            return;
+        }
+        
+        if (empty($auth_handler->access_token)) {
+            IndexFixer_Logger::log('❌ Brak Access Token - cron przerwany. Zaloguj się przez Google w dashboardzie IndexFixer.', 'warning');
+            return;
         }
         
         $token_expires_at = get_option('indexfixer_gsc_token_expires_at', 0);
@@ -451,12 +479,25 @@ class IndexFixer_Auth_Handler {
             
             IndexFixer_Logger::log("🔄 AUTOMATYCZNE ODNAWIANIE TOKENU - wygasa za $minutes_left minut", 'info');
             
+            if (empty($auth_handler->refresh_token)) {
+                IndexFixer_Logger::log('❌ Brak Refresh Token - nie można automatycznie odnowić. Wymagana ponowna autoryzacja w dashboardzie IndexFixer.', 'error');
+                return;
+            }
+            
             $result = $auth_handler->refresh_access_token();
             
             if ($result) {
                 IndexFixer_Logger::log('✅ Token automatycznie odnowiony przez cron', 'success');
             } else {
                 IndexFixer_Logger::log('❌ Nie udało się automatycznie odnowić tokenu', 'error');
+            }
+        } else {
+            $token_info = $auth_handler->get_token_expiry_info();
+            if ($token_info['expires_at'] > 0) {
+                $minutes_left = $token_info['expires_in_minutes'];
+                IndexFixer_Logger::log("✅ Token jeszcze ważny - wygasa za $minutes_left minut", 'info');
+            } else {
+                IndexFixer_Logger::log('ℹ️ Brak informacji o wygaśnięciu tokenu', 'info');
             }
         }
     }

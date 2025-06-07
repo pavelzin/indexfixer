@@ -74,6 +74,22 @@ if (!class_exists('IndexFixer_GSC_API')) {
          * Sprawdza, czy token jest świeży i odnawia go jeśli wygasa w ciągu 30 minut
          */
         private function ensure_fresh_token() {
+            // Jeśli dane nie zostały załadowane, spróbuj załadować bezpośrednio (fix dla crona)
+            if (empty($this->auth_handler->get_client_id()) && function_exists('get_option')) {
+                IndexFixer_Logger::log('⚠️ GSC API: Client ID pusty - ładuję dane bezpośrednio z bazy', 'warning');
+                
+                $client_id = get_option('indexfixer_gsc_client_id');
+                $client_secret = get_option('indexfixer_gsc_client_secret');
+                
+                if (!empty($client_id) && !empty($client_secret)) {
+                    $this->auth_handler->set_client_credentials($client_id, $client_secret);
+                    IndexFixer_Logger::log('✅ GSC API: Dane OAuth załadowane bezpośrednio', 'info');
+                } else {
+                    IndexFixer_Logger::log('❌ GSC API: Brak Client ID lub Client Secret w bazie danych', 'error');
+                    return false;
+                }
+            }
+            
             // Sprawdź podstawowe wymagania
             if (empty($this->auth_handler->get_client_id()) || empty($this->auth_handler->get_client_secret())) {
                 IndexFixer_Logger::log('❌ Brak Client ID lub Client Secret', 'error');
