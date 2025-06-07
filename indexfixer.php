@@ -23,7 +23,7 @@ if (!function_exists('add_action')) {
 }
 
 // Definicje stałych
-define('INDEXFIXER_VERSION', '1.0.32');
+define('INDEXFIXER_VERSION', '1.0.34');
 define('INDEXFIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INDEXFIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -62,6 +62,7 @@ function indexfixer_init() {
     
     // Rejestracja harmonogramu
     add_action('indexfixer_check_urls_event', 'indexfixer_check_urls');
+    add_action('indexfixer_auto_refresh_tokens', 'IndexFixer_Auth_Handler::auto_refresh_tokens');
     
     // Rejestracja harmonogramu przy aktywacji wtyczki
     register_activation_hook(__FILE__, 'indexfixer_activate');
@@ -286,17 +287,33 @@ function indexfixer_ajax_check_single_url() {
 // Aktywacja wtyczki
 function indexfixer_activate() {
     if (!wp_next_scheduled('indexfixer_check_urls_event')) {
-        wp_schedule_event(time(), 'hourly', 'indexfixer_check_urls_event');
+        wp_schedule_event(time(), 'daily', 'indexfixer_check_urls_event');
+    }
+    
+    // Nowy harmonogram do odnawiania tokenów co 30 minut
+    if (!wp_next_scheduled('indexfixer_auto_refresh_tokens')) {
+        wp_schedule_event(time(), 'thirty_minutes', 'indexfixer_auto_refresh_tokens');
     }
 }
 
 // Deaktywacja wtyczki
 function indexfixer_deactivate() {
     wp_clear_scheduled_hook('indexfixer_check_urls_event');
+    wp_clear_scheduled_hook('indexfixer_auto_refresh_tokens');
 }
 
 // Dodanie własnego interwału
 function indexfixer_add_cron_interval($schedules) {
+    $schedules['thirty_minutes'] = array(
+        'interval' => 1800, // 30 minut w sekundach
+        'display' => __('Co 30 minut')
+    );
+    
+    $schedules['ten_minutes'] = array(
+        'interval' => 600, // 10 minut w sekundach  
+        'display' => __('Co 10 minut')
+    );
+    
     $schedules['six_hours'] = array(
         'interval' => 21600, // 6 godzin w sekundach
         'display' => 'Co 6 godzin'

@@ -430,4 +430,34 @@ class IndexFixer_Auth_Handler {
             'expires_soon' => $expires_in_seconds > 0 && $expires_in_seconds < 300 // 5 minut
         );
     }
+    
+    /**
+     * Automatyczne odnawianie tokenów (wywoływane przez cron co 30 minut)
+     */
+    public static function auto_refresh_tokens() {
+        $auth_handler = new self();
+        
+        // Sprawdź czy mamy podstawowe dane
+        if (empty($auth_handler->client_id) || empty($auth_handler->client_secret) || empty($auth_handler->access_token)) {
+            return; // Brak konfiguracji - nie rób nic
+        }
+        
+        $token_expires_at = get_option('indexfixer_gsc_token_expires_at', 0);
+        $current_time = time();
+        
+        // Jeśli token wygasa w ciągu 45 minut - odnów go
+        if ($token_expires_at > 0 && ($token_expires_at - $current_time < 2700)) { // 45 minut = 2700 sekund
+            $minutes_left = round(($token_expires_at - $current_time) / 60);
+            
+            IndexFixer_Logger::log("🔄 AUTOMATYCZNE ODNAWIANIE TOKENU - wygasa za $minutes_left minut", 'info');
+            
+            $result = $auth_handler->refresh_access_token();
+            
+            if ($result) {
+                IndexFixer_Logger::log('✅ Token automatycznie odnowiony przez cron', 'success');
+            } else {
+                IndexFixer_Logger::log('❌ Nie udało się automatycznie odnowić tokenu', 'error');
+            }
+        }
+    }
 } 

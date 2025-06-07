@@ -269,6 +269,134 @@ if (!defined('ABSPATH')) {
         </table>
     <?php endif; ?>
     
+    <!-- NOWA SEKCJA: Status Cronów -->
+    <div style="margin: 30px 0; padding: 20px; background: #fff; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
+        <h2 style="margin-top: 0; margin-bottom: 20px; color: #23282d;">⏰ Status Harmonogramów (Cron Jobs)</h2>
+        
+        <?php
+        // Pobierz informacje o cronach
+        $cron_info = array();
+        
+        // 1. Główne sprawdzanie URL-ów
+        $main_cron = wp_next_scheduled('indexfixer_check_urls_event');
+        $cron_info[] = array(
+            'name' => 'Główne sprawdzanie URL-ów',
+            'hook' => 'indexfixer_check_urls_event',
+            'next_run' => $main_cron,
+            'interval' => 'daily (24h)',
+            'description' => 'Sprawdza wszystkie URL-e ze strony (limit: ' . INDEXFIXER_URL_LIMIT . ')',
+            'status' => $main_cron ? 'active' : 'inactive'
+        );
+        
+        // 2. Automatyczne odnawianie tokenów
+        $token_cron = wp_next_scheduled('indexfixer_auto_refresh_tokens');
+        $cron_info[] = array(
+            'name' => 'Automatyczne odnawianie tokenów',
+            'hook' => 'indexfixer_auto_refresh_tokens',
+            'next_run' => $token_cron,
+            'interval' => 'thirty_minutes (30 min)',
+            'description' => 'Odnawia tokeny Google gdy wygasają za <45 min',
+            'status' => $token_cron ? 'active' : 'inactive'
+        );
+        
+        // 3. Sprawdzanie widgetów
+        $widget_cron = wp_next_scheduled('indexfixer_widget_check');
+        $widget_test_mode = get_option('indexfixer_widget_test_mode', false);
+        $widget_interval = $widget_test_mode ? 'ten_minutes (10 min) - TRYB TESTOWY' : 'daily (24h)';
+        $cron_info[] = array(
+            'name' => 'Sprawdzanie URL-ów z widgetów',
+            'hook' => 'indexfixer_widget_check', 
+            'next_run' => $widget_cron,
+            'interval' => $widget_interval,
+            'description' => 'Sprawdza tylko URL-e wyświetlane w aktywnych widgetach',
+            'status' => $widget_cron ? 'active' : 'inactive'
+        );
+        
+        // 4. Sprawdź czy są inne crony WordPress
+        $all_crons = wp_get_scheduled_events();
+        $wp_cron_working = !empty($all_crons);
+        ?>
+        
+        <div style="margin-bottom: 20px; padding: 15px; background: <?php echo $wp_cron_working ? '#d4edda' : '#f8d7da'; ?>; border-radius: 6px; border-left: 4px solid <?php echo $wp_cron_working ? '#28a745' : '#dc3545'; ?>;">
+            <strong>WordPress Cron Status:</strong> 
+            <?php if ($wp_cron_working): ?>
+                <span style="color: #155724;">✅ Działa (<?php echo count($all_crons); ?> zaplanowanych zadań)</span>
+            <?php else: ?>
+                <span style="color: #721c24;">❌ Nie działa lub brak zadań</span>
+            <?php endif; ?>
+        </div>
+        
+        <div style="display: grid; gap: 15px;">
+            <?php foreach ($cron_info as $cron): ?>
+                <div style="padding: 15px; border: 1px solid #e1e5e9; border-radius: 6px; background: #fafafa;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <h4 style="margin: 0 0 5px 0; color: #23282d;">
+                                <?php echo esc_html($cron['name']); ?>
+                                <?php if ($cron['status'] === 'active'): ?>
+                                    <span style="color: #46b450; font-size: 12px;">●</span>
+                                <?php else: ?>
+                                    <span style="color: #dc3232; font-size: 12px;">●</span>
+                                <?php endif; ?>
+                            </h4>
+                            <div style="font-size: 13px; color: #666; margin-bottom: 5px;">
+                                <strong>Hook:</strong> <code><?php echo esc_html($cron['hook']); ?></code>
+                            </div>
+                            <div style="font-size: 13px; color: #666;">
+                                <?php echo esc_html($cron['description']); ?>
+                            </div>
+                        </div>
+                        <div style="text-align: right; min-width: 200px;">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 3px;">Interwał</div>
+                            <div style="font-weight: bold; color: #0073aa; margin-bottom: 8px;">
+                                <?php echo esc_html($cron['interval']); ?>
+                            </div>
+                            <?php if ($cron['next_run']): ?>
+                                <div style="font-size: 12px; color: #666; margin-bottom: 3px;">Następne uruchomienie</div>
+                                <div style="font-weight: bold; color: #23282d;">
+                                    <?php 
+                                    $next_run_local = $cron['next_run'] + (get_option('gmt_offset') * 3600);
+                                    echo date('d.m.Y H:i:s', $next_run_local); 
+                                    ?>
+                                </div>
+                                <div style="font-size: 11px; color: #666;">
+                                    (za <?php echo human_time_diff($cron['next_run'], current_time('timestamp')); ?>)
+                                </div>
+                            <?php else: ?>
+                                <div style="color: #dc3232; font-weight: bold;">NIE ZAPLANOWANE</div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        
+        <!-- Dodatkowe informacje -->
+        <div style="margin-top: 20px; padding: 15px; background: #e7f3ff; border-left: 4px solid #0073aa; border-radius: 4px;">
+            <h4 style="margin: 0 0 10px 0; color: #0073aa;">ℹ️ Informacje o harmonogramach:</h4>
+            <ul style="margin: 0; padding-left: 20px;">
+                <li><strong>Główne sprawdzanie:</strong> Uruchamia się raz dziennie i sprawdza wszystkie URL-e ze strony</li>
+                <li><strong>Odnawianie tokenów:</strong> Uruchamia się co 30 minut i sprawdza czy token Google nie wygasa</li>
+                <li><strong>Sprawdzanie widgetów:</strong> Sprawdza tylko URL-e które są wyświetlane w widgetach (oszczędza API)</li>
+                <li><strong>Tryb testowy widgetów:</strong> Można włączyć w ustawieniach - sprawdza co 10 minut zamiast 24h</li>
+            </ul>
+        </div>
+        
+        <?php if (!$wp_cron_working): ?>
+        <div style="margin-top: 15px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+            <h4 style="margin: 0 0 10px 0; color: #856404;">⚠️ Problem z WordPress Cron</h4>
+            <p style="margin: 0;">
+                WordPress Cron nie działa poprawnie. Sprawdź czy:
+            </p>
+            <ul style="margin: 10px 0 0 20px;">
+                <li>Strona ma regularny ruch (cron uruchamia się przy odwiedzinach)</li>
+                <li>Nie ma zablokowanego wp-cron.php w .htaccess</li>
+                <li>Rozważ ustawienie prawdziwego cron na serwerze</li>
+            </ul>
+        </div>
+        <?php endif; ?>
+    </div>
+
     <div class="indexfixer-logs">
         <h2>Logi</h2>
         <div id="indexfixer-logs-content">

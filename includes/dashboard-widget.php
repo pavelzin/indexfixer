@@ -137,7 +137,7 @@ class IndexFixer_Dashboard_Widget {
                     </div>
                 <?php elseif ($token_info['expires_at'] > 0): ?>
                     <div class="status-info success">
-                        <strong>🔑 Token ważny do <?php echo date('H:i', $token_info['expires_at']); ?></strong><br>
+                        <strong>🔑 Token ważny do <?php echo wp_date('H:i', $token_info['expires_at']); ?> (<?php echo wp_date('T', $token_info['expires_at']); ?>)</strong><br>
                         Automatyczne odnawianie aktywne
                     </div>
                 <?php endif; ?>
