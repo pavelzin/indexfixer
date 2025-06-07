@@ -37,20 +37,23 @@ class IndexFixer_Database {
     public static function create_tables() {
         global $wpdb;
         
-        $table_name = $wpdb->prefix . self::$table_name;
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        
+        // Tabela główna URL-ów
+        $table_name = self::get_table_name();
         
         $charset_collate = $wpdb->get_charset_collate();
         
         $sql = "CREATE TABLE $table_name (
-            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-            post_id bigint(20) unsigned NOT NULL DEFAULT 0,
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
             url varchar(500) NOT NULL,
-            status varchar(50) NOT NULL DEFAULT 'unknown',
-            verdict varchar(20) DEFAULT NULL,
+            post_id bigint(20) unsigned DEFAULT 0,
+            status varchar(50) DEFAULT 'unknown',
+            verdict varchar(50) DEFAULT NULL,
             coverage_state varchar(100) DEFAULT NULL,
-            robots_txt_state varchar(20) DEFAULT NULL,
-            indexing_state varchar(50) DEFAULT NULL,
-            page_fetch_state varchar(50) DEFAULT NULL,
+            robots_txt_state varchar(50) DEFAULT NULL,
+            indexing_state varchar(100) DEFAULT NULL,
+            page_fetch_state varchar(100) DEFAULT NULL,
             crawled_as varchar(50) DEFAULT NULL,
             last_crawl_time datetime DEFAULT NULL,
             last_checked datetime DEFAULT NULL,
@@ -59,17 +62,46 @@ class IndexFixer_Database {
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
-            UNIQUE KEY url_unique (url),
+            UNIQUE KEY url (url),
             KEY post_id (post_id),
             KEY status (status),
             KEY last_checked (last_checked),
-            KEY last_status_change (last_status_change)
+            KEY coverage_state (coverage_state)
         ) $charset_collate;";
         
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
         
-        IndexFixer_Logger::log('Tabela bazy danych utworzona/zaktualizowana: ' . $table_name, 'info');
+        // NOWA: Tabela statystyk historycznych
+        $stats_table = $wpdb->prefix . 'indexfixer_stats';
+        
+        $stats_sql = "CREATE TABLE $stats_table (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            date_recorded date NOT NULL,
+            total_urls int(11) DEFAULT 0,
+            checked_urls int(11) DEFAULT 0,
+            indexed int(11) DEFAULT 0,
+            not_indexed int(11) DEFAULT 0,
+            discovered int(11) DEFAULT 0,
+            excluded int(11) DEFAULT 0,
+            unknown int(11) DEFAULT 0,
+            verdict_pass int(11) DEFAULT 0,
+            verdict_neutral int(11) DEFAULT 0,
+            verdict_fail int(11) DEFAULT 0,
+            robots_allowed int(11) DEFAULT 0,
+            robots_disallowed int(11) DEFAULT 0,
+            new_indexed_today int(11) DEFAULT 0,
+            new_not_indexed_today int(11) DEFAULT 0,
+            status_changes_today int(11) DEFAULT 0,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY date_recorded (date_recorded),
+            KEY indexed (indexed),
+            KEY not_indexed (not_indexed)
+        ) $charset_collate;";
+        
+        dbDelta($stats_sql);
+        
+        IndexFixer_Logger::log('Tabele bazy danych zostały utworzone/zaktualizowane', 'success');
     }
     
     /**
@@ -134,7 +166,7 @@ class IndexFixer_Database {
             $wpdb->insert(
                 $table_name,
                 $data,
-                array('%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d')
+                array('%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d')
             );
         }
     }
@@ -250,6 +282,32 @@ class IndexFixer_Database {
     }
     
     /**
+     * NOWA: Pobiera URL-e które są aktualnie wyświetlane w widgetach i wymagają sprawdzenia
+     */
+    public static function get_widget_urls_for_checking($limit = 10) {
+        global $wpdb;
+        
+        $table_name = self::get_table_name();
+        
+        // Pobierz URL-e które są wyświetlane w widgetach (not_indexed) 
+        // I które nie były sprawdzane przez 24h lub wcale
+        $results = $wpdb->get_results($wpdb->prepare(
+            "SELECT u.*, p.post_title, p.post_type, p.post_date 
+             FROM $table_name u 
+             LEFT JOIN {$wpdb->posts} p ON u.post_id = p.ID 
+             WHERE (u.last_checked IS NULL 
+                    OR u.last_checked < DATE_SUB(NOW(), INTERVAL 24 HOUR))
+                   AND u.verdict = 'NEUTRAL' 
+                   AND u.coverage_state LIKE '%not indexed%'
+             ORDER BY u.last_status_change DESC, u.last_checked ASC 
+             LIMIT %d",
+            $limit
+        ));
+        
+        return $results;
+    }
+    
+    /**
      * Pobiera statystyki URL-ów
      */
     public static function get_statistics() {
@@ -262,9 +320,10 @@ class IndexFixer_Database {
                 status,
                 COUNT(*) as count,
                 verdict,
-                coverage_state
+                coverage_state,
+                last_checked
              FROM $table_name 
-             GROUP BY status, verdict, coverage_state"
+             GROUP BY status, verdict, coverage_state, last_checked"
         );
         
         // Przetwórz statystyki do formatu kompatybilnego z istniejącym kodem
@@ -286,7 +345,8 @@ class IndexFixer_Database {
         foreach ($stats as $stat) {
             $result['total'] += $stat->count;
             
-            if ($stat->status !== 'unknown') {
+            // POPRAWKA: URL jest sprawdzony tylko jeśli ma wypełnione last_checked (faktycznie sprawdzony przez API)
+            if ($stat->status !== 'unknown' && !empty($stat->last_checked)) {
                 $result['checked'] += $stat->count;
             }
             
@@ -302,7 +362,7 @@ class IndexFixer_Database {
                     $result['discovered'] += $stat->count;
                     break;
                 default:
-                    if ($stat->status === 'unknown') {
+                    if ($stat->status === 'unknown' || empty($stat->last_checked)) {
                         $result['unknown'] += $stat->count;
                     } else {
                         $result['excluded'] += $stat->count;
@@ -460,6 +520,140 @@ class IndexFixer_Database {
         ));
         
         return $post_id ? (int) $post_id : false;
+    }
+    
+    /**
+     * Zapisuje dzienne statystyki do tabeli historycznej
+     */
+    public static function save_daily_stats() {
+        global $wpdb;
+        
+        $stats_table = $wpdb->prefix . 'indexfixer_stats';
+        $today = current_time('Y-m-d');
+        
+        // Sprawdź czy już są statystyki na dzisiaj
+        $existing = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $stats_table WHERE date_recorded = %s",
+            $today
+        ));
+        
+        // Pobierz aktualne statystyki
+        $current_stats = self::get_statistics();
+        
+        // Oblicz zmiany względem wczoraj
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        $yesterday_stats = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $stats_table WHERE date_recorded = %s",
+            $yesterday
+        ));
+        
+        $new_indexed_today = 0;
+        $new_not_indexed_today = 0;
+        $status_changes_today = 0;
+        
+        if ($yesterday_stats) {
+            $new_indexed_today = max(0, $current_stats['indexed'] - $yesterday_stats->indexed);
+            $new_not_indexed_today = max(0, $current_stats['not_indexed'] - $yesterday_stats->not_indexed);
+            
+            // Oblicz całkowite zmiany statusu
+            $total_changes = abs($current_stats['indexed'] - $yesterday_stats->indexed) +
+                           abs($current_stats['not_indexed'] - $yesterday_stats->not_indexed) +
+                           abs($current_stats['discovered'] - $yesterday_stats->discovered);
+            $status_changes_today = $total_changes;
+        }
+        
+        $data = array(
+            'date_recorded' => $today,
+            'total_urls' => $current_stats['total'],
+            'checked_urls' => $current_stats['checked'],
+            'indexed' => $current_stats['indexed'],
+            'not_indexed' => $current_stats['not_indexed'],
+            'discovered' => $current_stats['discovered'],
+            'excluded' => $current_stats['excluded'],
+            'unknown' => $current_stats['unknown'],
+            'verdict_pass' => $current_stats['pass'],
+            'verdict_neutral' => $current_stats['neutral'],
+            'verdict_fail' => $current_stats['fail'],
+            'robots_allowed' => $current_stats['robots_allowed'],
+            'robots_disallowed' => $current_stats['robots_disallowed'],
+            'new_indexed_today' => $new_indexed_today,
+            'new_not_indexed_today' => $new_not_indexed_today,
+            'status_changes_today' => $status_changes_today
+        );
+        
+        if ($existing) {
+            // Aktualizuj istniejące statystyki
+            $result = $wpdb->update(
+                $stats_table,
+                $data,
+                array('date_recorded' => $today),
+                array('%s', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d'),
+                array('%s')
+            );
+            IndexFixer_Logger::log("Zaktualizowano statystyki dzienne dla $today", 'info');
+        } else {
+            // Wstawit nowe statystyki
+            $result = $wpdb->insert(
+                $stats_table,
+                $data,
+                array('%s', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d')
+            );
+            IndexFixer_Logger::log("Zapisano nowe statystyki dzienne dla $today", 'success');
+        }
+        
+        return $result !== false;
+    }
+    
+    /**
+     * Pobiera historyczne statystyki (ostatnie N dni)
+     */
+    public static function get_historical_stats($days = 30) {
+        global $wpdb;
+        
+        $stats_table = $wpdb->prefix . 'indexfixer_stats';
+        
+        $results = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM $stats_table 
+             ORDER BY date_recorded DESC 
+             LIMIT %d",
+            $days
+        ));
+        
+        return array_reverse($results); // Odwróć żeby najstarsze były pierwsze
+    }
+    
+    /**
+     * Pobiera statystyki trendu (porównanie z wczoraj)
+     */
+    public static function get_trend_stats() {
+        global $wpdb;
+        
+        $stats_table = $wpdb->prefix . 'indexfixer_stats';
+        $today = current_time('Y-m-d');
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        
+        $today_stats = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $stats_table WHERE date_recorded = %s",
+            $today
+        ));
+        
+        $yesterday_stats = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $stats_table WHERE date_recorded = %s",
+            $yesterday
+        ));
+        
+        if (!$today_stats || !$yesterday_stats) {
+            return false;
+        }
+        
+        return array(
+            'indexed_change' => $today_stats->indexed - $yesterday_stats->indexed,
+            'not_indexed_change' => $today_stats->not_indexed - $yesterday_stats->not_indexed,
+            'discovered_change' => $today_stats->discovered - $yesterday_stats->discovered,
+            'new_indexed_today' => $today_stats->new_indexed_today,
+            'new_not_indexed_today' => $today_stats->new_not_indexed_today,
+            'status_changes_today' => $today_stats->status_changes_today
+        );
     }
 }
 

@@ -110,6 +110,21 @@ if (!defined('ABSPATH')) {
             </button>
             <div id="unlock-result" style="margin-top: 10px;"></div>
         </div>
+        
+        <div style="margin-top: 20px;">
+            <h3>📊 Zarządzanie Statystykami</h3>
+            <p>Zapisuj dzienne snapshots statystyk do śledzenia postępu indeksowania w czasie:</p>
+            <div style="background: #e7f3ff; padding: 10px; border-left: 3px solid #0073aa; margin: 10px 0; font-size: 14px;">
+                <strong>💡 Jak to działa:</strong><br>
+                • Zapisuje obecne statystyki jako snapshot dnia dzisiejszego<br>
+                • Pozwala porównywać postęp dzień do dnia<br>
+                • Automatycznie odbywa się po każdym sprawdzaniu cron
+            </div>
+            <button type="button" onclick="saveDailyStats()" class="button button-secondary">
+                💾 Zapisz Dzisiejsze Statystyki
+            </button>
+            <div id="stats-result" style="margin-top: 10px;"></div>
+        </div>
     </div>
     
     <div style="background: white; padding: 20px; border: 1px solid #ddd; border-radius: 5px; margin: 20px 0;">
@@ -126,6 +141,64 @@ if (!defined('ABSPATH')) {
                 <li>Widget automatycznie pokaże niezaindeksowane posty</li>
                 <li>Sprawdzanie odbywa się automatycznie co 24h</li>
             </ol>
+        </div>
+    </div>
+    
+    <!-- NOWA SEKCJA: Zarządzanie automatycznym sprawdzaniem -->
+    <div style="background: white; padding: 20px; border: 1px solid #ddd; border-radius: 5px; margin: 20px 0;">
+        <h2>🤖 Automatyczne sprawdzanie widgetów</h2>
+        
+        <div id="scheduler-status" style="background: #f0f0f1; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+            <p><strong>Status:</strong> <span id="schedule-info">Ładowanie...</span></p>
+            <p><strong>Tryb:</strong> <span id="test-mode-info">Sprawdzam...</span></p>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <h3>🧪 Tryb testowy</h3>
+            <p>W trybie testowym URL-e są sprawdzane co 10 minut zamiast co 24 godziny. Idealny do testowania czy mechanizm działa.</p>
+            
+            <button type="button" id="enable-test-mode" class="button button-secondary">
+                Włącz tryb testowy (10 min)
+            </button>
+            
+            <button type="button" id="disable-test-mode" class="button button-secondary">
+                Wyłącz tryb testowy (24h)
+            </button>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <h3>⚡ Ręczne sprawdzanie</h3>
+            <p>Uruchom sprawdzanie widgetów natychmiast (niezależnie od harmonogramu).</p>
+            
+            <button type="button" id="run-manual-check" class="button button-primary">
+                Uruchom sprawdzanie teraz
+            </button>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <h3>🔑 Testowe odświeżanie tokenu</h3>
+            <p>Ręcznie odśwież token Google Search Console (do testowania mechanizmu autoryzacji).</p>
+            
+            <button type="button" id="test-refresh-token" class="button button-secondary" style="background: #ff6b35; border-color: #ff6b35; color: white;">
+                🧪 Odśwież token Google
+            </button>
+            <div id="token-refresh-result" style="margin-top: 10px;"></div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <button type="button" id="refresh-schedule-status" class="button">
+                🔄 Odśwież status
+            </button>
+        </div>
+        
+        <div style="background: #fff3cd; padding: 15px; border-left: 3px solid #ffc107; margin: 20px 0;">
+            <h3 style="margin: 0 0 10px 0;">📋 Jak to działa:</h3>
+            <ul style="margin: 0;">
+                <li><strong>Automatyczne sprawdzanie:</strong> System sprawdza niezaindeksowane URL-e z widgetów</li>
+                <li><strong>Inteligentne logowanie:</strong> Wszystkie działania są zapisywane w logach</li>
+                <li><strong>Tryb testowy:</strong> Pozwala szybko przetestować czy mechanizm działa (10 min zamiast 24h)</li>
+                <li><strong>Automatyczne wyłączanie:</strong> Jeśli nie ma aktywnych widgetów, sprawdzanie się wyłącza</li>
+            </ul>
         </div>
     </div>
 </div>
@@ -341,4 +414,190 @@ function unlockProcess() {
         resultDiv.innerHTML = '<div style="color: #d63638;">❌ Błąd: ' + error.message + '</div>';
     });
 }
+
+function saveDailyStats() {
+    const resultDiv = document.getElementById('stats-result');
+    resultDiv.innerHTML = '<div style="color: #0073aa;">⏳ Zapisywanie dzisiejszych statystyk...</div>';
+    
+    fetch(ajaxurl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'indexfixer_save_daily_stats',
+            nonce: '<?php echo wp_create_nonce('indexfixer_save_stats'); ?>'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            resultDiv.innerHTML = '<div style="color: #00a32a;">✅ ' + data.data.message + '</div>';
+        } else {
+            resultDiv.innerHTML = '<div style="color: #d63638;">❌ ' + data.data + '</div>';
+        }
+    })
+    .catch(error => {
+        resultDiv.innerHTML = '<div style="color: #d63638;">❌ Błąd: ' + error.message + '</div>';
+    });
+}
+
+jQuery(document).ready(function($) {
+    // Funkcja odświeżania statusu
+    function refreshScheduleStatus() {
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'indexfixer_get_schedule_status',
+                nonce: '<?php echo wp_create_nonce('indexfixer_schedule_status'); ?>'
+            },
+            success: function(response) {
+                if (response.success) {
+                    $('#schedule-info').text(response.data.message);
+                    $('#test-mode-info').text(response.data.status.test_mode ? 'TESTOWY (10 min)' : 'PRODUKCYJNY (24h)');
+                } else {
+                    $('#schedule-info').text('Błąd: ' + (response.data || 'Nieznany błąd'));
+                }
+            },
+            error: function() {
+                $('#schedule-info').text('Błąd połączenia');
+            }
+        });
+    }
+    
+    // Włącz tryb testowy
+    $('#enable-test-mode').on('click', function() {
+        var $button = $(this);
+        var originalText = $button.text();
+        
+        $button.prop('disabled', true).text('Włączam...');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'indexfixer_enable_test_mode',
+                nonce: '<?php echo wp_create_nonce('indexfixer_test_mode'); ?>'
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('✅ ' + response.data.message);
+                    refreshScheduleStatus();
+                } else {
+                    alert('❌ Błąd: ' + (response.data || 'Nieznany błąd'));
+                }
+                $button.prop('disabled', false).text(originalText);
+            },
+            error: function() {
+                alert('❌ Błąd połączenia');
+                $button.prop('disabled', false).text(originalText);
+            }
+        });
+    });
+    
+    // Wyłącz tryb testowy
+    $('#disable-test-mode').on('click', function() {
+        var $button = $(this);
+        var originalText = $button.text();
+        
+        $button.prop('disabled', true).text('Wyłączam...');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'indexfixer_disable_test_mode',
+                nonce: '<?php echo wp_create_nonce('indexfixer_test_mode'); ?>'
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('✅ ' + response.data.message);
+                    refreshScheduleStatus();
+                } else {
+                    alert('❌ Błąd: ' + (response.data || 'Nieznany błąd'));
+                }
+                $button.prop('disabled', false).text(originalText);
+            },
+            error: function() {
+                alert('❌ Błąd połączenia');
+                $button.prop('disabled', false).text(originalText);
+            }
+        });
+    });
+    
+    // Ręczne sprawdzanie
+    $('#run-manual-check').on('click', function() {
+        var $button = $(this);
+        var originalText = $button.text();
+        
+        $button.prop('disabled', true).text('Sprawdzam...');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'indexfixer_run_manual_check',
+                nonce: '<?php echo wp_create_nonce('indexfixer_manual_check'); ?>'
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('✅ ' + response.data.message);
+                    refreshScheduleStatus();
+                } else {
+                    alert('❌ Błąd: ' + (response.data || 'Nieznany błąd'));
+                }
+                $button.prop('disabled', false).text(originalText);
+            },
+            error: function() {
+                alert('❌ Błąd połączenia');
+                $button.prop('disabled', false).text(originalText);
+            }
+        });
+    });
+    
+    // Testowe odświeżanie tokenu
+    $('#test-refresh-token').on('click', function() {
+        var $button = $(this);
+        var $resultDiv = $('#token-refresh-result');
+        var originalText = $button.text();
+        
+        $button.prop('disabled', true).text('Odświeżam token...');
+        $resultDiv.html('<div style="color: #0073aa;">⏳ Próbuję odświeżyć token Google...</div>');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'indexfixer_test_refresh_token',
+                nonce: '<?php echo wp_create_nonce('indexfixer_nonce'); ?>'
+            },
+            success: function(response) {
+                if (response.success) {
+                    $resultDiv.html('<div style="color: #00a32a;">✅ ' + response.data.message + '</div>' +
+                        '<div style="color: #666; font-size: 12px; margin-top: 5px;">' +
+                        'Stary token wygasał: ' + response.data.old_expiry + '<br>' +
+                        'Nowy token wygasa: ' + response.data.new_expiry + '<br>' +
+                        'Za minut: ' + response.data.expires_in_minutes +
+                        '</div>');
+                } else {
+                    $resultDiv.html('<div style="color: #d63638;">❌ ' + (response.data || 'Nieznany błąd') + '</div>');
+                }
+                $button.prop('disabled', false).text(originalText);
+            },
+            error: function() {
+                $resultDiv.html('<div style="color: #d63638;">❌ Błąd połączenia</div>');
+                $button.prop('disabled', false).text(originalText);
+            }
+        });
+    });
+    
+    // Odśwież status
+    $('#refresh-schedule-status').on('click', function() {
+        refreshScheduleStatus();
+    });
+    
+    // Załaduj status przy starcie
+    refreshScheduleStatus();
+});
 </script> 

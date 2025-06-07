@@ -124,6 +124,23 @@ class IndexFixer_Dashboard_Widget {
                     <a href="<?php echo admin_url('admin.php?page=indexfixer'); ?>">Skonfiguruj połączenie z GSC</a>
                 </div>
             <?php else: ?>
+                <?php 
+                // NOWE: Pokaż informacje o czasie wygaśnięcia tokenu
+                $auth_handler = new IndexFixer_Auth_Handler();
+                $token_info = $auth_handler->get_token_expiry_info();
+                ?>
+                
+                <?php if ($token_info['expires_soon']): ?>
+                    <div class="status-info warning">
+                        <strong>⏰ Token wygasa za <?php echo $token_info['expires_in_minutes']; ?> minut</strong><br>
+                        Automatyczne odnawianie aktywne
+                    </div>
+                <?php elseif ($token_info['expires_at'] > 0): ?>
+                    <div class="status-info success">
+                        <strong>🔑 Token ważny do <?php echo date('H:i', $token_info['expires_at']); ?></strong><br>
+                        Automatyczne odnawianie aktywne
+                    </div>
+                <?php endif; ?>
                 
                 <?php if ($process_running): ?>
                     <div class="status-info warning">
@@ -279,7 +296,8 @@ class IndexFixer_Dashboard_Widget {
                 $status_data = IndexFixer_Cache::get_url_status($url_data['url']);
             }
             
-            if ($status_data !== false) {
+            // POPRAWKA: URL jest sprawdzony tylko jeśli ma wypełnione last_checked (faktycznie sprawdzony przez API)
+            if ($status_data !== false && !empty($status_data['lastChecked'])) {
                 $stats['checked']++;
                 
                 // Jeśli to stary format (string), przekonwertuj na nowy

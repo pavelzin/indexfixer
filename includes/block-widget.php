@@ -57,7 +57,8 @@ class IndexFixer_Block_Widget {
         
         // Jeśli auto_check jest włączone, zaplanuj sprawdzanie
         if ($auto_check) {
-            self::maybe_schedule_check();
+            // USUNIĘTE: Stary mechanizm planowania - teraz używamy IndexFixer_Widget_Scheduler
+            // self::maybe_schedule_check();
         }
         
         // Pobierz niezaindeksowane URL-e z bazy danych
@@ -134,7 +135,7 @@ class IndexFixer_Block_Widget {
     }
     
     /**
-     * AJAX podgląd bloku w edytorze
+     * AJAX podgląd bloku
      */
     public static function ajax_block_preview() {
         if (!wp_verify_nonce($_POST['nonce'], 'indexfixer_block_nonce')) {
@@ -153,18 +154,6 @@ class IndexFixer_Block_Widget {
         }
         
         wp_send_json_success($posts);
-    }
-    
-    /**
-     * Sprawdza czy trzeba zaplanować automatyczne sprawdzanie
-     */
-    private static function maybe_schedule_check() {
-        $scheduled = wp_next_scheduled('indexfixer_widget_daily_check');
-        
-        if (!$scheduled) {
-            wp_schedule_event(time(), 'daily', 'indexfixer_widget_daily_check');
-            IndexFixer_Logger::log('Zaplanowano automatyczne sprawdzanie URL-ów przez blok widget co 24h', 'info');
-        }
     }
 }
 

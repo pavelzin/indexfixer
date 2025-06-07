@@ -3,7 +3,7 @@
  * Plugin Name: IndexFixer
  * Plugin URI: https://github.com/pavelzin/indexfixer.git
  * Description: Wtyczka do sprawdzania statusu indeksowania URL-i w Google Search Console
- * Version: 1.0.22
+ * Version: 1.0.32
  * Author: Pawel Zinkiewicz
  * Author URI: https://bynajmniej.pl
  * License: GPL v2 or later
@@ -23,7 +23,7 @@ if (!function_exists('add_action')) {
 }
 
 // Definicje stałych
-define('INDEXFIXER_VERSION', '1.0.22');
+define('INDEXFIXER_VERSION', '1.0.32');
 define('INDEXFIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INDEXFIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -41,12 +41,17 @@ require_once INDEXFIXER_PLUGIN_DIR . 'includes/database.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/widget.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/block-widget.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/dashboard-widget.php';
+require_once INDEXFIXER_PLUGIN_DIR . 'includes/widget-scheduler.php';
+require_once INDEXFIXER_PLUGIN_DIR . 'includes/updater.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'admin/dashboard.php';
 
 // Inicjalizacja wtyczki
 function indexfixer_init() {
     // Inicjalizacja dashboardu
     new IndexFixer_Dashboard();
+    
+    // Inicjalizacja automatycznych aktualizacji
+    new IndexFixer_Updater(__FILE__);
     
     // Rejestracja skryptów i stylów - obsługiwane przez IndexFixer_Dashboard
     
@@ -227,8 +232,47 @@ function indexfixer_ajax_check_single_url() {
         'sitemap' => isset($status['indexStatusResult']['sitemap']) ? $status['indexStatusResult']['sitemap'] : array()
     );
     
+    // Dodaj prosty status dla backward compatibility
+    if (isset($status['indexStatusResult']['coverageState'])) {
+        $coverage_state = $status['indexStatusResult']['coverageState'];
+        switch($coverage_state) {
+            case 'Submitted and indexed':
+                $detailed_status['simple_status'] = 'INDEXED';
+                break;
+            case 'Crawled - currently not indexed':
+                $detailed_status['simple_status'] = 'NOT_INDEXED';
+                break;
+            case 'Discovered - currently not indexed':
+                $detailed_status['simple_status'] = 'PENDING';
+                break;
+            default:
+                $detailed_status['simple_status'] = 'OTHER';
+        }
+    } else {
+        $detailed_status['simple_status'] = 'unknown';
+    }
+    
     // Zapisz w cache
     IndexFixer_Cache::set_url_status($url, $detailed_status);
+    
+    // UJEDNOLICENIE: Zapisz również w tabeli bazy danych (tak samo jak w cron i dashboard)
+    $post_id = url_to_postid($url);
+    if (!$post_id) {
+        // Spróbuj znaleźć post_id na podstawie permalink
+        $path = parse_url($url, PHP_URL_PATH);
+        if ($path) {
+            global $wpdb;
+            $post_id = $wpdb->get_var($wpdb->prepare(
+                "SELECT ID FROM {$wpdb->posts} 
+                 WHERE post_name = %s 
+                 AND post_status = 'publish'
+                 LIMIT 1",
+                basename(rtrim($path, '/'))
+            ));
+        }
+    }
+    // Zapisz zawsze - nawet bez post_id (użyj 0)
+    IndexFixer_Database::save_url_status($post_id ?: 0, $url, $detailed_status);
     
     IndexFixer_Logger::log("✅ Sprawdzono URL: $url - Verdict: {$detailed_status['verdict']}, Coverage: {$detailed_status['coverageState']}", 'success');
     
@@ -432,6 +476,14 @@ function indexfixer_check_urls() {
     
     // Zapisz czas ostatniego sprawdzenia dla dashboard widget
     update_option('indexfixer_last_check', time());
+    
+    // NOWE: Zapisz dzienne statystyki po zakończeniu sprawdzania
+    IndexFixer_Logger::log('💾 Zapisuję dzienne statystyki...', 'info');
+    if (IndexFixer_Database::save_daily_stats()) {
+        IndexFixer_Logger::log('✅ Statystyki dzienne zostały zapisane', 'success');
+    } else {
+        IndexFixer_Logger::log('❌ Błąd podczas zapisywania statystyk dziennych', 'error');
+    }
     
     // Usuń flagę że proces się wykonuje
     delete_transient('indexfixer_process_running');

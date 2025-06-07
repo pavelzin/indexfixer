@@ -166,11 +166,7 @@ class IndexFixer_Auth_Handler {
             'state' => $state
         );
         
-        if (function_exists('add_query_arg')) {
-            $auth_url = add_query_arg($params, 'https://accounts.google.com/o/oauth2/v2/auth');
-        } else {
-            $auth_url = 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query($params);
-        }
+        $auth_url = 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query($params);
         
         IndexFixer_Logger::log('Wygenerowany URL autoryzacji:', 'info');
         IndexFixer_Logger::log($auth_url, 'info');
@@ -230,6 +226,14 @@ class IndexFixer_Auth_Handler {
                 update_option('indexfixer_gsc_refresh_token', $this->refresh_token);
                 IndexFixer_Logger::log('Zapisano Refresh Token', 'success');
             }
+            
+            // NOWE: Zapisz czas wygaśnięcia tokenu przy pierwszej autoryzacji
+            $expires_at = time() + 3600; // 1 godzina domyślnie
+            if (isset($body['expires_in'])) {
+                $expires_at = time() + intval($body['expires_in']);
+            }
+            update_option('indexfixer_gsc_token_expires_at', $expires_at);
+            IndexFixer_Logger::log(sprintf('Zapisano czas wygaśnięcia tokenu: %s', date('Y-m-d H:i:s', $expires_at)), 'info');
             
             $update_result = function_exists('update_option') ? update_option('indexfixer_gsc_access_token', $this->access_token) : false;
             
@@ -298,7 +302,15 @@ class IndexFixer_Auth_Handler {
             $this->access_token = $body['access_token'];
             update_option('indexfixer_gsc_access_token', $this->access_token);
             
+            // NOWE: Zapisz nowy czas wygaśnięcia tokenu (Google tokeny wygasają po 1 godzinie)
+            $expires_at = time() + 3600; // 1 godzina
+            if (isset($body['expires_in'])) {
+                $expires_at = time() + intval($body['expires_in']);
+            }
+            update_option('indexfixer_gsc_token_expires_at', $expires_at);
+            
             IndexFixer_Logger::log('Access Token został pomyślnie odnowiony', 'success');
+            IndexFixer_Logger::log(sprintf('Nowy token wygasa: %s', date('Y-m-d H:i:s', $expires_at)), 'info');
             return true;
         }
         
@@ -309,6 +321,7 @@ class IndexFixer_Auth_Handler {
             // Usuń wszystkie tokeny z bazy
             delete_option('indexfixer_gsc_access_token');
             delete_option('indexfixer_gsc_refresh_token');
+            delete_option('indexfixer_gsc_token_expires_at'); // NOWE: Usuń również czas wygaśnięcia
             
             // Wyczyść tokeny w obiekcie
             $this->access_token = '';
@@ -342,23 +355,79 @@ class IndexFixer_Auth_Handler {
             return false;
         }
         
-        // Sprawdź czy token jest ważny
-        $response = wp_remote_get(
-            'https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' . $this->access_token
-        );
+        // POPRAWKA: Sprawdź czy token wygasa w ciągu najbliższych 5 minut (proaktywne odnawianie)
+        $token_expires_at = get_option('indexfixer_gsc_token_expires_at', 0);
+        $current_time = time();
         
-        if (is_wp_error($response)) {
-            IndexFixer_Logger::log('Błąd weryfikacji tokenu - próba odnowienia', 'info');
-            return $this->refresh_access_token();
-        }
-        
-        $response_code = wp_remote_retrieve_response_code($response);
-        if ($response_code !== 200) {
-            IndexFixer_Logger::log('Token nieważny - próba odnowienia', 'info');
-            return $this->refresh_access_token();
+        // NOWA LOGIKA: Jeśli nie ma expires_at LUB token wygasa za mniej niż 5 minut
+        if ($token_expires_at == 0 || ($token_expires_at - $current_time < 300)) {
+            IndexFixer_Logger::log('Token wymaga sprawdzenia/odnowienia (brak expires_at lub wygasa za <5min)', 'info');
+            
+            // Jeśli nie ma expires_at, sprawdź token przez API
+            if ($token_expires_at == 0) {
+                $response = wp_remote_get(
+                    'https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' . $this->access_token
+                );
+                
+                if (is_wp_error($response)) {
+                    IndexFixer_Logger::log('Błąd weryfikacji tokenu - próba odnowienia', 'info');
+                    return $this->refresh_access_token();
+                }
+                
+                $response_code = wp_remote_retrieve_response_code($response);
+                if ($response_code !== 200) {
+                    IndexFixer_Logger::log('Token nieważny - próba odnowienia', 'info');
+                    return $this->refresh_access_token();
+                }
+                
+                // Zapisz czas wygaśnięcia na podstawie odpowiedzi Google
+                $body = json_decode(wp_remote_retrieve_body($response), true);
+                if (isset($body['expires_in'])) {
+                    $expires_at = $current_time + intval($body['expires_in']);
+                    update_option('indexfixer_gsc_token_expires_at', $expires_at);
+                    IndexFixer_Logger::log(sprintf('Zapisano czas wygaśnięcia tokenu: %s', date('Y-m-d H:i:s', $expires_at)), 'info');
+                    
+                    // Sprawdź czy wygasa za mniej niż 5 minut
+                    if ($expires_at - $current_time < 300) {
+                        IndexFixer_Logger::log('Token wygasa za mniej niż 5 minut - odnawiam', 'info');
+                        return $this->refresh_access_token();
+                    }
+                }
+            } else {
+                // Mamy expires_at i wygasa za mniej niż 5 minut
+                IndexFixer_Logger::log('Token wygasa za mniej niż 5 minut - proaktywne odnawianie', 'info');
+                return $this->refresh_access_token();
+            }
         }
         
         IndexFixer_Logger::log('Autoryzacja poprawna', 'success');
         return true;
+    }
+    
+    /**
+     * Pobiera informacje o czasie wygaśnięcia tokenu
+     */
+    public function get_token_expiry_info() {
+        $expires_at = get_option('indexfixer_gsc_token_expires_at', 0);
+        if ($expires_at == 0) {
+            return array(
+                'expires_at' => 0,
+                'expires_in_minutes' => null,
+                'is_expired' => false,
+                'expires_soon' => false
+            );
+        }
+        
+        $current_time = time();
+        $expires_in_seconds = $expires_at - $current_time;
+        $expires_in_minutes = round($expires_in_seconds / 60);
+        
+        return array(
+            'expires_at' => $expires_at,
+            'expires_at_formatted' => date('Y-m-d H:i:s', $expires_at),
+            'expires_in_minutes' => $expires_in_minutes,
+            'is_expired' => $expires_in_seconds <= 0,
+            'expires_soon' => $expires_in_seconds > 0 && $expires_in_seconds < 300 // 5 minut
+        );
     }
 } 

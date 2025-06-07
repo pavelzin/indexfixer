@@ -27,6 +27,16 @@ class IndexFixer_Dashboard {
         add_action('wp_ajax_indexfixer_debug_database', array($this, 'ajax_debug_database'));
         add_action('wp_ajax_indexfixer_unlock_process', array($this, 'ajax_unlock_process'));
         add_action('wp_ajax_indexfixer_resume_checking', array($this, 'ajax_resume_checking'));
+        add_action('wp_ajax_indexfixer_save_daily_stats', array($this, 'ajax_save_daily_stats'));
+        add_action('wp_ajax_indexfixer_clear_logs', array($this, 'ajax_clear_logs'));
+        
+        // NOWE: AJAX dla zarządzania schedulerem widgetów
+        add_action('wp_ajax_indexfixer_enable_test_mode', array($this, 'ajax_enable_test_mode'));
+        add_action('wp_ajax_indexfixer_disable_test_mode', array($this, 'ajax_disable_test_mode'));
+        add_action('wp_ajax_indexfixer_run_manual_check', array($this, 'ajax_run_manual_check'));
+        add_action('wp_ajax_indexfixer_get_schedule_status', array($this, 'ajax_get_schedule_status'));
+        add_action('wp_ajax_indexfixer_save_today_stats', array($this, 'ajax_save_today_stats'));
+        add_action('wp_ajax_indexfixer_test_refresh_token', array($this, 'ajax_test_refresh_token'));
     }
     
     /**
@@ -188,7 +198,8 @@ class IndexFixer_Dashboard {
             
             $url_statuses[$url_data['url']] = $status_data;
             
-            if ($status_data !== false) {
+            // POPRAWKA: URL jest sprawdzony tylko jeśli ma wypełnione last_checked (faktycznie sprawdzony przez API)
+            if ($status_data !== false && !empty($status_data['lastChecked'])) {
                 $stats['checked']++;
                 
                 // Jeśli to stary format (string), przekonwertuj na nowy
@@ -357,6 +368,10 @@ class IndexFixer_Dashboard {
         // Przekaż statystyki do JS
         wp_localize_script('indexfixer-admin', 'indexfixer_stats', $stats);
         
+        // Pobierz historyczne statystyki dla template
+        $historical_stats = IndexFixer_Database::get_historical_stats(30);
+        $trend_stats = IndexFixer_Database::get_trend_stats();
+        
         // Wyświetl dashboard
         include INDEXFIXER_PLUGIN_DIR . 'templates/dashboard.php';
     }
@@ -517,29 +532,82 @@ class IndexFixer_Dashboard {
             wp_die('Invalid URL');
         }
         
+        IndexFixer_Logger::log("🔍 Sprawdzanie pojedynczego URL z dashboardu: $url", 'info');
+        
         $gsc_api = new IndexFixer_GSC_API();
         $status = $gsc_api->check_url_status($url);
         
         if (isset($status['error'])) {
+            IndexFixer_Logger::log("❌ Błąd sprawdzania URL z dashboardu: $url - {$status['error']}", 'error');
             wp_send_json_error($status['error']);
         } else {
-            // Zapisz w wp_options (kompatybilność wsteczna)
-            $cached_statuses = get_option('indexfixer_url_statuses', array());
-            $cached_statuses[$url] = $status;
-            update_option('indexfixer_url_statuses', $cached_statuses);
+            // UJEDNOLICENIE: Przygotuj szczegółowe dane tak samo jak w głównej funkcji
+            $detailed_status = array(
+                'verdict' => isset($status['indexStatusResult']['verdict']) ? $status['indexStatusResult']['verdict'] : 'unknown',
+                'coverageState' => isset($status['indexStatusResult']['coverageState']) ? $status['indexStatusResult']['coverageState'] : 'unknown',
+                'robotsTxtState' => isset($status['indexStatusResult']['robotsTxtState']) ? $status['indexStatusResult']['robotsTxtState'] : 'unknown',
+                'indexingState' => isset($status['indexStatusResult']['indexingState']) ? $status['indexStatusResult']['indexingState'] : 'unknown',
+                'pageFetchState' => isset($status['indexStatusResult']['pageFetchState']) ? $status['indexStatusResult']['pageFetchState'] : 'unknown',
+                'lastCrawlTime' => isset($status['indexStatusResult']['lastCrawlTime']) ? $status['indexStatusResult']['lastCrawlTime'] : 'unknown',
+                'crawledAs' => isset($status['indexStatusResult']['crawledAs']) ? $status['indexStatusResult']['crawledAs'] : 'unknown',
+                'referringUrls' => isset($status['indexStatusResult']['referringUrls']) ? $status['indexStatusResult']['referringUrls'] : array(),
+                'sitemap' => isset($status['indexStatusResult']['sitemap']) ? $status['indexStatusResult']['sitemap'] : array()
+            );
             
-            // NOWE: Zapisz również w tabeli bazy danych
-            $post_id = url_to_postid($url);
-            // Zapisz nawet bez post_id (użyj 0)
-            IndexFixer_Database::save_url_status($post_id ?: 0, $url, $status);
-            
-            if ($post_id) {
-                IndexFixer_Logger::log("Zaktualizowano status URL w tabeli (post_id: $post_id): $url", 'info');
+            // UJEDNOLICENIE: Dodaj prosty status dla backward compatibility (tak samo jak w głównej funkcji)
+            if (isset($status['indexStatusResult']['coverageState'])) {
+                $coverage_state = $status['indexStatusResult']['coverageState'];
+                switch($coverage_state) {
+                    case 'Submitted and indexed':
+                        $detailed_status['simple_status'] = 'INDEXED';
+                        break;
+                    case 'Crawled - currently not indexed':
+                        $detailed_status['simple_status'] = 'NOT_INDEXED';
+                        break;
+                    case 'Discovered - currently not indexed':
+                        $detailed_status['simple_status'] = 'PENDING';
+                        break;
+                    default:
+                        $detailed_status['simple_status'] = 'OTHER';
+                }
             } else {
-                IndexFixer_Logger::log("Zaktualizowano status URL w tabeli (bez post_id): $url", 'info');
+                $detailed_status['simple_status'] = 'unknown';
             }
             
-            wp_send_json_success($status);
+            // UJEDNOLICENIE: Zapisz w cache tak samo jak główna funkcja
+            IndexFixer_Cache::set_url_status($url, $detailed_status);
+            
+            // UJEDNOLICENIE: Zapisz w tabeli bazy danych z tymi samymi danymi
+            $post_id = url_to_postid($url);
+            if (!$post_id) {
+                // Spróbuj znaleźć post_id na podstawie permalink (tak samo jak główna funkcja)
+                $path = parse_url($url, PHP_URL_PATH);
+                if ($path) {
+                    global $wpdb;
+                    $post_id = $wpdb->get_var($wpdb->prepare(
+                        "SELECT ID FROM {$wpdb->posts} 
+                         WHERE post_name = %s 
+                         AND post_status = 'publish'
+                         LIMIT 1",
+                        basename(rtrim($path, '/'))
+                    ));
+                }
+            }
+            // Zapisz zawsze - nawet bez post_id (użyj 0)
+            IndexFixer_Database::save_url_status($post_id ?: 0, $url, $detailed_status);
+            
+            if ($post_id) {
+                IndexFixer_Logger::log("✅ Zaktualizowano status URL z dashboardu (post_id: $post_id): $url - Verdict: {$detailed_status['verdict']}, Coverage: {$detailed_status['coverageState']}", 'success');
+            } else {
+                IndexFixer_Logger::log("✅ Zaktualizowano status URL z dashboardu (bez post_id): $url - Verdict: {$detailed_status['verdict']}, Coverage: {$detailed_status['coverageState']}", 'success');
+            }
+            
+            // Zwróć ujednolicone dane
+            wp_send_json_success(array(
+                'url' => $url,
+                'status' => $detailed_status,
+                'raw_status' => $status // Dla kompatybilności z istniejącym JS
+            ));
         }
         
         wp_die();
@@ -744,9 +812,9 @@ class IndexFixer_Dashboard {
             // Sprawdź czy URL ma dane w tabeli
             $db_status = IndexFixer_Database::get_url_status($url_data['url']);
             
-            // Jeśli nie ma danych w tabeli lub ma status "unknown", dodaj do sprawdzenia
+            // POPRAWKA: URL jest niesprawdzony jeśli nie ma danych w tabeli LUB nie ma wypełnionego last_checked
             if (!$db_status || 
-                (is_array($db_status) && isset($db_status['status']) && $db_status['status'] === 'unknown') ||
+                empty($db_status['lastChecked']) ||
                 (is_array($db_status) && isset($db_status['verdict']) && $db_status['verdict'] === 'unknown')) {
                 $unchecked[] = $url_data;
             }
@@ -857,5 +925,181 @@ class IndexFixer_Dashboard {
         // Usuń flagę procesu
         delete_transient('indexfixer_process_running');
         IndexFixer_Logger::log('🏁 WZNOWIENIE ZAKOŃCZONE', 'success');
+    }
+    
+    /**
+     * AJAX ręczne zapisanie dzisiejszych statystyk
+     */
+    public function ajax_save_daily_stats() {
+        check_ajax_referer('indexfixer_save_stats', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        // Zapisz dzienne statystyki
+        $result = IndexFixer_Database::save_daily_stats();
+        
+        if ($result) {
+            $today = current_time('Y-m-d');
+            IndexFixer_Logger::log("📊 Ręcznie zapisano statystyki dzienne dla $today", 'success');
+            wp_send_json_success(array(
+                'message' => "Statystyki dzienne zostały zapisane dla $today",
+                'date' => $today
+            ));
+        } else {
+            wp_send_json_error('Błąd podczas zapisywania statystyk dziennych');
+        }
+    }
+    
+    /**
+     * AJAX czyszczenie logów
+     */
+    public function ajax_clear_logs() {
+        check_ajax_referer('indexfixer_clear_logs', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        // Wyczyść logi
+        $result = IndexFixer_Logger::clear_logs();
+        
+        if ($result) {
+            IndexFixer_Logger::log('🗑️ Logi zostały wyczyszczone przez administratora', 'info');
+            wp_send_json_success(array(
+                'message' => 'Logi zostały wyczyszczone'
+            ));
+        } else {
+            wp_send_json_error('Błąd podczas czyszczenia logów');
+        }
+    }
+    
+    // NOWE: AJAX dla zarządzania schedulerem widgetów
+    public function ajax_enable_test_mode() {
+        check_ajax_referer('indexfixer_test_mode', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        IndexFixer_Widget_Scheduler::enable_test_mode();
+        
+        wp_send_json_success(array(
+            'message' => 'Tryb testowy włączony - sprawdzanie co 10 minut',
+            'status' => IndexFixer_Widget_Scheduler::get_schedule_status()
+        ));
+    }
+    
+    public function ajax_disable_test_mode() {
+        check_ajax_referer('indexfixer_test_mode', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        IndexFixer_Widget_Scheduler::disable_test_mode();
+        
+        wp_send_json_success(array(
+            'message' => 'Tryb testowy wyłączony - powrót do sprawdzania co 24h',
+            'status' => IndexFixer_Widget_Scheduler::get_schedule_status()
+        ));
+    }
+    
+    public function ajax_run_manual_check() {
+        check_ajax_referer('indexfixer_manual_check', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        // Uruchom sprawdzanie w tle
+        IndexFixer_Widget_Scheduler::run_manual_check();
+        
+        wp_send_json_success(array(
+            'message' => 'Ręczne sprawdzanie zostało uruchomione - sprawdź logi',
+            'logs' => IndexFixer_Logger::format_logs()
+        ));
+    }
+    
+    public function ajax_get_schedule_status() {
+        check_ajax_referer('indexfixer_schedule_status', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        $status = IndexFixer_Widget_Scheduler::get_schedule_status();
+        
+        wp_send_json_success(array(
+            'status' => $status,
+            'message' => $status['scheduled'] ? 
+                "Następne sprawdzanie: {$status['next_run']} (interwał: {$status['interval']})" : 
+                'Brak zaplanowanego sprawdzania'
+        ));
+    }
+    
+    /**
+     * AJAX ręczne zapisanie dzisiejszych statystyk
+     */
+    public function ajax_save_today_stats() {
+        check_ajax_referer('indexfixer_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        $database = new IndexFixer_Database();
+        $result = $database->save_today_stats();
+        
+        if ($result) {
+            wp_send_json_success('Statystyki zostały zapisane');
+        } else {
+            wp_send_json_error('Błąd podczas zapisywania statystyk');
+        }
+    }
+    
+    /**
+     * AJAX testowe odświeżanie tokenu Google
+     */
+    public function ajax_test_refresh_token() {
+        check_ajax_referer('indexfixer_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        IndexFixer_Logger::log('🧪 TESTOWE ODŚWIEŻANIE TOKENU - wywołane ręcznie', 'info');
+        
+        $auth_handler = new IndexFixer_Auth_Handler();
+        
+        // Sprawdź aktualny stan tokenu
+        $token_info = $auth_handler->get_token_expiry_info();
+        IndexFixer_Logger::log('📊 Stan tokenu przed odświeżaniem:', 'info');
+        IndexFixer_Logger::log('   • Wygasa: ' . ($token_info['expires_at_formatted'] ?? 'brak danych'), 'info');
+        IndexFixer_Logger::log('   • Za minut: ' . ($token_info['expires_in_minutes'] ?? 'brak danych'), 'info');
+        IndexFixer_Logger::log('   • Wygasł: ' . ($token_info['is_expired'] ? 'TAK' : 'NIE'), 'info');
+        
+        // Spróbuj odświeżyć token
+        $refresh_result = $auth_handler->refresh_access_token();
+        
+        if ($refresh_result) {
+            // Sprawdź stan po odświeżeniu
+            $new_token_info = $auth_handler->get_token_expiry_info();
+            IndexFixer_Logger::log('✅ Token został odświeżony pomyślnie', 'success');
+            IndexFixer_Logger::log('📊 Stan tokenu po odświeżaniu:', 'info');
+            IndexFixer_Logger::log('   • Wygasa: ' . ($new_token_info['expires_at_formatted'] ?? 'brak danych'), 'info');
+            IndexFixer_Logger::log('   • Za minut: ' . ($new_token_info['expires_in_minutes'] ?? 'brak danych'), 'info');
+            
+            wp_send_json_success(array(
+                'message' => 'Token został pomyślnie odświeżony',
+                'old_expiry' => $token_info['expires_at_formatted'] ?? 'brak danych',
+                'new_expiry' => $new_token_info['expires_at_formatted'] ?? 'brak danych',
+                'expires_in_minutes' => $new_token_info['expires_in_minutes'] ?? 'brak danych'
+            ));
+        } else {
+            IndexFixer_Logger::log('❌ Nie udało się odświeżyć tokenu', 'error');
+            wp_send_json_error('Nie udało się odświeżyć tokenu - sprawdź logi');
+        }
     }
 } 

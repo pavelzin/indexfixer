@@ -17,10 +17,6 @@ class IndexFixer_Not_Indexed_Widget extends WP_Widget {
                 'description' => 'Wyświetla listę niezaindeksowanych postów do linkowania wewnętrznego',
             )
         );
-        
-        // Hook dla automatycznego sprawdzania co 24h
-        add_action('wp', array($this, 'maybe_schedule_check'));
-        add_action('indexfixer_widget_daily_check', array($this, 'daily_url_check'));
     }
     
     /**
@@ -111,85 +107,7 @@ class IndexFixer_Not_Indexed_Widget extends WP_Widget {
         $instance['count'] = (!empty($new_instance['count'])) ? (int) $new_instance['count'] : 5;
         $instance['auto_check'] = (!empty($new_instance['auto_check'])) ? 1 : 0;
         
-        // Sprawdź harmonogram automatycznego sprawdzania po zapisaniu ustawień
-        add_action('shutdown', array($this, 'maybe_schedule_check'));
-        
         return $instance;
-    }
-    
-    /**
-     * Sprawdza czy trzeba zaplanować automatyczne sprawdzanie
-     */
-    public function maybe_schedule_check() {
-        // Sprawdź czy jakikolwiek widget ma włączone auto_check
-        $widget_instances = get_option('widget_indexfixer_not_indexed', array());
-        
-        $auto_check_enabled = false;
-        foreach ($widget_instances as $instance) {
-            if (!empty($instance['auto_check'])) {
-                $auto_check_enabled = true;
-                break;
-            }
-        }
-        
-        $scheduled = wp_next_scheduled('indexfixer_widget_daily_check');
-        
-        if ($auto_check_enabled && !$scheduled) {
-            // Zaplanuj automatyczne sprawdzanie jeśli jest włączone
-            wp_schedule_event(time(), 'daily', 'indexfixer_widget_daily_check');
-            IndexFixer_Logger::log('Zaplanowano automatyczne sprawdzanie URL-ów przez widget co 24h', 'info');
-        } elseif (!$auto_check_enabled && $scheduled) {
-            // Usuń harmonogram jeśli auto_check jest wyłączone wszędzie
-            wp_clear_scheduled_hook('indexfixer_widget_daily_check');
-            IndexFixer_Logger::log('Usunięto automatyczne sprawdzanie URL-ów przez widget', 'info');
-        }
-    }
-    
-    /**
-     * Codzienne automatyczne sprawdzanie URL-ów
-     */
-    public function daily_url_check() {
-        // Sprawdź czy jakakolwiek instancja widget ma włączone auto_check
-        $widget_instances = get_option('widget_indexfixer_not_indexed', array());
-        
-        $auto_check_enabled = false;
-        foreach ($widget_instances as $instance) {
-            if (!empty($instance['auto_check'])) {
-                $auto_check_enabled = true;
-                break;
-            }
-        }
-        
-        if (!$auto_check_enabled) {
-            return;
-        }
-        
-        IndexFixer_Logger::log('Rozpoczęcie automatycznego sprawdzania URL-ów przez widget', 'info');
-        
-        // Pobierz URL-e do sprawdzenia (max 10 na raz)
-        $urls_to_check = IndexFixer_Database::get_urls_for_checking(10);
-        
-        if (empty($urls_to_check)) {
-            IndexFixer_Logger::log('Brak URL-ów do sprawdzenia przez widget', 'info');
-            return;
-        }
-        
-        $gsc_api = new IndexFixer_GSC_API();
-        $checked = 0;
-        
-        foreach ($urls_to_check as $url_data) {
-            $status = $gsc_api->check_url_status($url_data->url);
-            
-            if ($status && !isset($status['error'])) {
-                IndexFixer_Database::save_url_status($url_data->post_id, $url_data->url, $status);
-                $checked++;
-                
-                // Rate limiting
-                sleep(2);
-            }
-        }
-        
-        IndexFixer_Logger::log("Widget automatycznie sprawdził $checked URL-ów", 'success');
     }
 }
 
@@ -247,7 +165,7 @@ class IndexFixer_Widget_Manager {
      * Cleanup - usuwa zaplanowane zadania przy deaktywacji
      */
     public static function cleanup() {
-        wp_clear_scheduled_hook('indexfixer_widget_daily_check');
+        // Cleanup logic if needed
     }
 }
 

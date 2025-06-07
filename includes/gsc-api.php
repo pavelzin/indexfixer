@@ -25,12 +25,16 @@ if (!class_exists('IndexFixer_GSC_API')) {
             IndexFixer_Logger::log('=== POCZĄTEK check_url_status() ===', 'info');
             IndexFixer_Logger::log(sprintf('URL do sprawdzenia: %s', $url), 'info');
             
-            if (!$this->auth_handler->is_authorized_with_refresh()) {
-                IndexFixer_Logger::log('Brak autoryzacji do Google Search Console', 'error');
-                return array('error' => 'Brak autoryzacji do Google Search Console');
+            // Przeładuj tokeny z bazy na wypadek gdyby zostały odświeżone w innej instancji
+            $this->auth_handler->reload_tokens_from_database();
+            
+            // NOWE: Sprawdź i odnów token PRZED każdym requestem (30 minut przed wygaśnięciem)
+            if (!$this->ensure_fresh_token()) {
+                IndexFixer_Logger::log('❌ Nie udało się zapewnić świeżego tokenu', 'error');
+                return array('error' => 'Brak autoryzacji do Google Search Console - token wygasł i nie udało się go odnowić');
             }
 
-            IndexFixer_Logger::log('Autoryzacja OK, przechodze dalej...', 'info');
+            IndexFixer_Logger::log('✅ Token jest świeży, przechodze dalej...', 'info');
             
             // Użyj standardowe formaty bazując na get_site_url()
             $site_url = get_site_url();
@@ -66,9 +70,60 @@ if (!class_exists('IndexFixer_GSC_API')) {
             return false;
         }
         
-
-
-
+        /**
+         * Sprawdza, czy token jest świeży i odnawia go jeśli wygasa w ciągu 30 minut
+         */
+        private function ensure_fresh_token() {
+            // Sprawdź podstawowe wymagania
+            if (empty($this->auth_handler->get_client_id()) || empty($this->auth_handler->get_client_secret())) {
+                IndexFixer_Logger::log('❌ Brak Client ID lub Client Secret', 'error');
+                return false;
+            }
+            
+            if (empty($this->auth_handler->get_access_token())) {
+                IndexFixer_Logger::log('❌ Brak Access Token', 'error');
+                return false;
+            }
+            
+            // Sprawdź czas wygaśnięcia tokenu
+            $token_expires_at = get_option('indexfixer_gsc_token_expires_at', 0);
+            $current_time = time();
+            
+            // Jeśli nie ma expires_at, sprawdź token przez API Google
+            if ($token_expires_at == 0) {
+                IndexFixer_Logger::log('⚠️ Brak informacji o wygaśnięciu tokenu - sprawdzam przez API Google', 'warning');
+                return $this->auth_handler->is_authorized_with_refresh();
+            }
+            
+            $time_until_expiry = $token_expires_at - $current_time;
+            $minutes_until_expiry = round($time_until_expiry / 60);
+            
+            IndexFixer_Logger::log(sprintf('🕐 Token wygasa za %d minut (%s)', 
+                $minutes_until_expiry, 
+                date('Y-m-d H:i:s', $token_expires_at)
+            ), 'info');
+            
+            // Jeśli token wygasł lub wygasa w ciągu 30 minut - odnów go
+            if ($time_until_expiry <= 1800) { // 30 minut = 1800 sekund
+                if ($time_until_expiry <= 0) {
+                    IndexFixer_Logger::log('🔄 Token wygasł - próbuję odnowić', 'warning');
+                } else {
+                    IndexFixer_Logger::log('🔄 Token wygasa za mniej niż 30 minut - proaktywnie odnawiam', 'info');
+                }
+                
+                $refresh_result = $this->auth_handler->refresh_access_token();
+                if (!$refresh_result) {
+                    IndexFixer_Logger::log('❌ Nie udało się odnowić tokenu', 'error');
+                    return false;
+                }
+                
+                IndexFixer_Logger::log('✅ Token został pomyślnie odnowiony', 'success');
+                return true;
+            }
+            
+            IndexFixer_Logger::log('✅ Token jest świeży (wygasa za więcej niż 30 minut)', 'success');
+            return true;
+        }
         
         /**
          * Próbuje sprawdzić URL z określonym formatem siteUrl
