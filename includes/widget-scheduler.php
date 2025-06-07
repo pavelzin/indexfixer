@@ -57,13 +57,24 @@ class IndexFixer_Widget_Scheduler {
         self::$test_mode = true;
         update_option('indexfixer_widget_test_mode', true);
         
-        // Usuń stary harmonogram
+        IndexFixer_Logger::log('🧪 TRYB TESTOWY WŁĄCZONY - usuwam stary harmonogram', 'info');
+        
+        // Usuń WSZYSTKIE crony z tym hookiem
         wp_clear_scheduled_hook(self::$hook_name);
         
-        // Zaplanuj nowy z krótkim interwałem
-        wp_schedule_event(time(), 'ten_minutes', self::$hook_name);
+        // Wyczyść cache sprawdzania harmonogramu
+        delete_option('indexfixer_widget_schedule_check');
         
-        IndexFixer_Logger::log('🧪 TRYB TESTOWY WŁĄCZONY: Sprawdzanie widgetów co 10 minut', 'info');
+        // Zaplanuj nowy z krótkim interwałem (10 minut)
+        $scheduled = wp_schedule_event(time(), 'ten_minutes', self::$hook_name);
+        
+        if ($scheduled !== false) {
+            $next_run = wp_next_scheduled(self::$hook_name);
+            $next_run_local = date('Y-m-d H:i:s', $next_run + (get_option('gmt_offset') * 3600));
+            IndexFixer_Logger::log("✅ Zaplanowano nowy harmonogram TESTOWY (10 min) - następne uruchomienie: $next_run_local", 'success');
+        } else {
+            IndexFixer_Logger::log('❌ Nie udało się zaplanować nowego harmonogramu testowego', 'error');
+        }
     }
     
     /**
@@ -73,14 +84,32 @@ class IndexFixer_Widget_Scheduler {
         self::$test_mode = false;
         update_option('indexfixer_widget_test_mode', false);
         
-        // Usuń stary harmonogram
+        IndexFixer_Logger::log('🏁 TRYB TESTOWY WYŁĄCZONY - usuwam stary harmonogram', 'info');
+        
+        // Usuń WSZYSTKIE crony z tym hookiem (może być kilka z różnymi interwałami)
         wp_clear_scheduled_hook(self::$hook_name);
         
-        // Sprawdź czy widgety są aktywne i zaplanuj normalny harmonogram
-        $instance = self::get_instance();
-        $instance->maybe_update_schedule();
+        // Wyczyść cache sprawdzania harmonogramu żeby wymusić ponowne planowanie
+        delete_option('indexfixer_widget_schedule_check');
         
-        IndexFixer_Logger::log('🏁 TRYB TESTOWY WYŁĄCZONY: Powrót do sprawdzania co 24h', 'info');
+        // Sprawdź czy widgety są aktywne
+        $instance = self::get_instance();
+        $widgets_active = $instance->are_widgets_active();
+        
+        if ($widgets_active) {
+            // Zaplanuj nowy harmonogram w trybie produkcyjnym (24h)
+            $scheduled = wp_schedule_event(time(), 'daily', self::$hook_name);
+            
+            if ($scheduled !== false) {
+                $next_run = wp_next_scheduled(self::$hook_name);
+                $next_run_local = date('Y-m-d H:i:s', $next_run + (get_option('gmt_offset') * 3600));
+                IndexFixer_Logger::log("✅ Zaplanowano nowy harmonogram PRODUKCYJNY (24h) - następne uruchomienie: $next_run_local", 'success');
+            } else {
+                IndexFixer_Logger::log('❌ Nie udało się zaplanować nowego harmonogramu', 'error');
+            }
+        } else {
+            IndexFixer_Logger::log('ℹ️ Brak aktywnych widgetów - nie planuje harmonogramu', 'info');
+        }
     }
     
     /**

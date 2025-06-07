@@ -206,6 +206,16 @@ if (!defined('ABSPATH')) {
         </div>
         
         <div style="margin-bottom: 20px;">
+            <h3>🔧 Naprawa crona widgetów</h3>
+            <p>Jeśli cron widgetów pracuje z nieprawidłowym interwałem (np. 10 min zamiast 24h), wymuś przebudowę.</p>
+            
+            <button type="button" id="force-rebuild-schedule" class="button button-secondary" style="background: #dc3545; border-color: #dc3545; color: white;">
+                🔧 Przebuduj harmonogram widgetów
+            </button>
+            <div id="rebuild-schedule-result" style="margin-top: 10px;"></div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
             <button type="button" id="refresh-schedule-status" class="button">
                 🔄 Odśwież status
             </button>
@@ -617,6 +627,42 @@ jQuery(document).ready(function($) {
         refreshScheduleStatus();
     });
     
+    // Przebudowa harmonogramu widgetów
+    $('#force-rebuild-schedule').on('click', function() {
+        var $button = $(this);
+        var $resultDiv = $('#rebuild-schedule-result');
+        var originalText = $button.text();
+        
+        $button.prop('disabled', true).text('Przebudowuję...');
+        $resultDiv.html('<div style="color: #0073aa;">⏳ Przebudowuję harmonogram widgetów...</div>');
+        
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'indexfixer_force_rebuild_widget_schedule',
+                nonce: '<?php echo wp_create_nonce('indexfixer_nonce'); ?>'
+            },
+            success: function(response) {
+                if (response.success) {
+                    var message = '<div style="color: #00a32a;">✅ ' + response.data.message + '</div>';
+                    if (response.data.test_mode) {
+                        message += '<div style="color: #ff6b35; margin-top: 5px;">⚠️ UWAGA: Tryb testowy jest włączony w bazie danych!</div>';
+                    }
+                    $resultDiv.html(message);
+                    refreshScheduleStatus(); // Odśwież status po przebudowie
+                } else {
+                    $resultDiv.html('<div style="color: #d63638;">❌ ' + (response.data || 'Nieznany błąd') + '</div>');
+                }
+                $button.prop('disabled', false).text(originalText);
+            },
+            error: function() {
+                $resultDiv.html('<div style="color: #d63638;">❌ Błąd połączenia</div>');
+                $button.prop('disabled', false).text(originalText);
+            }
+        });
+    });
+
     // Załaduj status przy starcie
     refreshScheduleStatus();
 });

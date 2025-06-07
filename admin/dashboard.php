@@ -39,6 +39,7 @@ class IndexFixer_Dashboard {
         add_action('wp_ajax_indexfixer_test_refresh_token', array($this, 'ajax_test_refresh_token'));
         add_action('wp_ajax_indexfixer_test_updater', array($this, 'ajax_test_updater'));
         add_action('wp_ajax_indexfixer_schedule_token_cron', array($this, 'ajax_schedule_token_cron'));
+        add_action('wp_ajax_indexfixer_force_rebuild_widget_schedule', array($this, 'ajax_force_rebuild_widget_schedule'));
     }
     
     /**
@@ -1237,47 +1238,72 @@ class IndexFixer_Dashboard {
      * AJAX planowanie crona odnawiania tokenów
      */
     public function ajax_schedule_token_cron() {
-        // Sprawdź uprawnienia i nonce
+        check_ajax_referer('indexfixer_nonce', 'nonce');
+        
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Brak uprawnień');
         }
         
-        check_ajax_referer('indexfixer_nonce', 'nonce');
+        $already_scheduled = wp_next_scheduled('indexfixer_auto_refresh_tokens');
         
-        IndexFixer_Logger::log('🔄 Planowanie crona odnawiania tokenów...', 'info');
-        
-        try {
-            // Sprawdź czy cron już istnieje
-            $existing = wp_next_scheduled('indexfixer_auto_refresh_tokens');
-            if ($existing) {
-                IndexFixer_Logger::log("✅ Cron już zaplanowany na: " . date('Y-m-d H:i:s', $existing), 'info');
-                wp_send_json_success(array(
-                    'message' => 'Cron już był zaplanowany',
-                    'next_run' => date('Y-m-d H:i:s', $existing),
-                    'status' => 'already_scheduled'
-                ));
-                return;
-            }
-            
-            // Zaplanuj nowy cron
+        if ($already_scheduled) {
+            $next_run = date('Y-m-d H:i:s', $already_scheduled + (get_option('gmt_offset') * 3600));
+            wp_send_json_success(array(
+                'message' => "Cron odnawiania tokenów już istnieje. Następne uruchomienie: $next_run",
+                'already_exists' => true
+            ));
+        } else {
+            // Zaplanuj cron odnawiania tokenów co 30 minut
             $scheduled = wp_schedule_event(time(), 'thirty_minutes', 'indexfixer_auto_refresh_tokens');
             
-            if ($scheduled === false) {
-                throw new Exception('Nie udało się zaplanować crona');
+            if ($scheduled !== false) {
+                IndexFixer_Logger::log('⏰ Ręcznie zaplanowano cron odnawiania tokenów (co 30 min)', 'success');
+                wp_send_json_success(array(
+                    'message' => 'Cron odnawiania tokenów został zaplanowany (co 30 minut)',
+                    'scheduled' => true
+                ));
+            } else {
+                wp_send_json_error('Nie udało się zaplanować crona odnawiania tokenów');
             }
-            
-            $next_run = wp_next_scheduled('indexfixer_auto_refresh_tokens');
-            IndexFixer_Logger::log("✅ Cron zaplanowany pomyślnie na: " . date('Y-m-d H:i:s', $next_run), 'success');
+        }
+    }
+
+    /**
+     * AJAX wymuś przebudowę harmonogramu widgetów
+     */
+    public function ajax_force_rebuild_widget_schedule() {
+        check_ajax_referer('indexfixer_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        // Usuń WSZYSTKIE crony widgetów (także te z nieprawidłowym interwałem)
+        wp_clear_scheduled_hook('indexfixer_widget_check');
+        
+        // Wymuś przebudowę harmonogramu
+        delete_option('indexfixer_widget_schedule_check'); // Usuń info o ostatnim sprawdzeniu
+        
+        // Zaplanuj nowy harmonogram w trybie produkcyjnym
+        $test_mode = get_option('indexfixer_widget_test_mode', false);
+        if ($test_mode) {
+            IndexFixer_Logger::log('⚠️ UWAGA: Tryb testowy jest włączony w bazie danych!', 'warning');
+        }
+        
+        $interval = $test_mode ? 'ten_minutes' : 'daily';
+        $scheduled = wp_schedule_event(time(), $interval, 'indexfixer_widget_check');
+        
+        if ($scheduled !== false) {
+            $mode = $test_mode ? 'TESTOWY (10 min)' : 'PRODUKCYJNY (24h)';
+            IndexFixer_Logger::log("🔧 Wymuszona przebudowa harmonogramu widgetów - tryb: $mode", 'success');
             
             wp_send_json_success(array(
-                'message' => 'Cron zaplanowany pomyślnie!',
-                'next_run' => date('Y-m-d H:i:s', $next_run),
-                'status' => 'scheduled'
+                'message' => "Harmonogram przebudowany - tryb: $mode",
+                'test_mode' => $test_mode,
+                'interval' => $interval
             ));
-            
-        } catch (Exception $e) {
-            IndexFixer_Logger::log('❌ Błąd planowania crona: ' . $e->getMessage(), 'error');
-            wp_send_json_error('Błąd: ' . $e->getMessage());
+        } else {
+            wp_send_json_error('Nie udało się przebudować harmonogramu');
         }
     }
 } 
