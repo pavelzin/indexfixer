@@ -40,6 +40,7 @@ class IndexFixer_Dashboard {
         add_action('wp_ajax_indexfixer_test_updater', array($this, 'ajax_test_updater'));
         add_action('wp_ajax_indexfixer_schedule_token_cron', array($this, 'ajax_schedule_token_cron'));
         add_action('wp_ajax_indexfixer_force_rebuild_widget_schedule', array($this, 'ajax_force_rebuild_widget_schedule'));
+        add_action('wp_ajax_indexfixer_test_stats_cron', array($this, 'ajax_test_stats_cron'));
     }
     
     /**
@@ -1305,5 +1306,29 @@ class IndexFixer_Dashboard {
         } else {
             wp_send_json_error('Nie udało się przebudować harmonogramu');
         }
+    }
+    
+    /**
+     * Testuje cron zapisywania statystyk dziennych
+     */
+    public function ajax_test_stats_cron() {
+        check_ajax_referer('indexfixer_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        IndexFixer_Logger::log('🧪 Test crona zapisywania statystyk dziennych (wywołany z dashboardu)', 'info');
+        
+        // Wywołaj funkcję crona bezpośrednio
+        indexfixer_save_daily_stats();
+        
+        // Pobierz logi z ostatnich kilku sekund
+        $logs = IndexFixer_Logger::format_logs();
+        
+        wp_send_json_success(array(
+            'message' => 'Test crona zapisywania statystyk został wykonany',
+            'logs' => $logs
+        ));
     }
 } 

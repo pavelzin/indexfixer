@@ -493,6 +493,9 @@ document.addEventListener('DOMContentLoaded', function() {
         <button type="button" onclick="saveDailyStats()" class="button button-secondary" style="margin-top: 15px;">
             💾 Zapisz Dzisiejsze Statystyki
         </button>
+        <button type="button" onclick="testStatsCron()" class="button button-secondary" style="margin-top: 15px; margin-left: 10px;">
+            🧪 Testuj Cron Statystyk
+        </button>
     </div>
 </div>
 <?php endif; ?>
@@ -589,6 +592,40 @@ function saveDailyStats() {
     .then(data => {
         if (data.success) {
             alert('✅ ' + data.data.message);
+            location.reload();
+        } else {
+            alert('❌ ' + data.data);
+        }
+    })
+    .catch(error => {
+        alert('❌ Błąd: ' + error.message);
+    })
+    .finally(() => {
+        button.textContent = originalText;
+        button.disabled = false;
+    });
+}
+
+function testStatsCron() {
+    const button = event.target;
+    const originalText = button.textContent;
+    button.textContent = '⏳ Testowanie...';
+    button.disabled = true;
+    
+    fetch(ajaxurl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'indexfixer_test_stats_cron',
+            nonce: '<?php echo wp_create_nonce('indexfixer_nonce'); ?>'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ ' + data.data.message + '\n\nLogi zostały dodane - odśwież stronę aby je zobaczyć.');
             location.reload();
         } else {
             alert('❌ ' + data.data);

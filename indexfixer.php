@@ -3,7 +3,7 @@
  * Plugin Name: IndexFixer
  * Plugin URI: https://github.com/pavelzin/indexfixer.git
  * Description: Wtyczka do sprawdzania statusu indeksowania URL-i w Google Search Console
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: Pawel Zinkiewicz
  * Author URI: https://bynajmniej.pl
  * License: GPL v2 or later
@@ -23,7 +23,7 @@ if (!function_exists('add_action')) {
 }
 
 // Definicje stałych
-define('INDEXFIXER_VERSION', '1.1.0');
+define('INDEXFIXER_VERSION', '1.1.1');
 define('INDEXFIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INDEXFIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -66,6 +66,7 @@ function indexfixer_init() {
     // Rejestracja harmonogramu
     add_action('indexfixer_check_urls_event', 'indexfixer_check_urls');
     add_action('indexfixer_auto_refresh_tokens', 'IndexFixer_Auth_Handler::auto_refresh_tokens');
+    add_action('indexfixer_daily_stats_save', 'indexfixer_save_daily_stats');
     
     // Rejestracja harmonogramu przy aktywacji wtyczki
     register_activation_hook(__FILE__, 'indexfixer_activate');
@@ -87,6 +88,14 @@ function indexfixer_ensure_crons_scheduled() {
     if (!wp_next_scheduled('indexfixer_auto_refresh_tokens')) {
         wp_schedule_event(time(), 'thirty_minutes', 'indexfixer_auto_refresh_tokens');
         IndexFixer_Logger::log('✅ Zaplanowano cron odnawiania tokenów (co 30 min)', 'success');
+    }
+    
+    // 3. Sprawdź cron zapisywania statystyk dziennych
+    if (!wp_next_scheduled('indexfixer_daily_stats_save')) {
+        // Zaplanuj na godzinę 2:00 nad ranem następnego dnia
+        $tomorrow_2am = strtotime('tomorrow 2:00 AM');
+        wp_schedule_event($tomorrow_2am, 'daily', 'indexfixer_daily_stats_save');
+        IndexFixer_Logger::log('✅ Zaplanowano cron zapisywania statystyk dziennych (o 2:00)', 'success');
     }
 }
 
@@ -319,6 +328,7 @@ function indexfixer_activate() {
 function indexfixer_deactivate() {
     wp_clear_scheduled_hook('indexfixer_check_urls_event');
     wp_clear_scheduled_hook('indexfixer_auto_refresh_tokens');
+    wp_clear_scheduled_hook('indexfixer_daily_stats_save');
 }
 
 // Dodanie własnego interwału
@@ -340,6 +350,23 @@ function indexfixer_add_cron_interval($schedules) {
     return $schedules;
 }
 add_filter('cron_schedules', 'indexfixer_add_cron_interval');
+
+// Funkcja zapisywania statystyk dziennych
+function indexfixer_save_daily_stats() {
+    IndexFixer_Logger::log('🗓️ Rozpoczęto automatyczne zapisywanie statystyk dziennych', 'info');
+    
+    try {
+        $result = IndexFixer_Database::save_daily_stats();
+        
+        if ($result) {
+            IndexFixer_Logger::log('✅ Statystyki dzienne zostały zapisane pomyślnie', 'success');
+        } else {
+            IndexFixer_Logger::log('❌ Nie udało się zapisać statystyk dziennych', 'error');
+        }
+    } catch (Exception $e) {
+        IndexFixer_Logger::log('❌ Błąd podczas zapisywania statystyk: ' . $e->getMessage(), 'error');
+    }
+}
 
 // Funkcja sprawdzająca URL-e
 function indexfixer_check_urls() {
