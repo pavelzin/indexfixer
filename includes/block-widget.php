@@ -80,12 +80,10 @@ class IndexFixer_Block_Widget {
                         $post_title = $url_data->post_title ?: 'Bez tytułu';
                         $post_url = $url_data->url;
                         ?>
-                        <li style="margin-bottom: 12px; padding: 8px; background: #f9f9f9; border-left: 3px solid #ff6b6b;">
-                            <div style="font-weight: bold; margin-bottom: 4px;">
-                                <a href="<?php echo esc_url($post_url); ?>" title="<?php echo esc_attr($post_title); ?>">
-                                    <?php echo esc_html(wp_trim_words($post_title, 6)); ?>
-                                </a>
-                            </div>
+                        <li style="margin-bottom: 8px; padding: 0; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+                            <a href="<?php echo esc_url($post_url); ?>" title="<?php echo esc_attr($post_title); ?>">
+                                <?php echo esc_html(wp_trim_words($post_title, 8)); ?>
+                            </a>
                         </li>
                     <?php endforeach; ?>
                 </ul>

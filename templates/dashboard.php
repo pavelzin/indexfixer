@@ -115,6 +115,128 @@ if (!defined('ABSPATH')) {
         </script>
     </div>
 
+    <!-- URL-e z widgetów -->
+    <?php 
+    $widget_urls = IndexFixer_Widget_Scheduler::get_all_widget_urls();
+    
+    // DEBUG: Sprawdź co zwraca funkcja
+    echo '<!-- DEBUG: widget_urls count: ' . count($widget_urls) . ' -->';
+    if (empty($widget_urls)) {
+        echo '<!-- DEBUG: widget_urls is empty -->';
+        
+        // Sprawdź czy są aktywne widgety
+        $widget_instances = get_option('widget_indexfixer_not_indexed', array());
+        echo '<!-- DEBUG: widget_instances: ' . print_r($widget_instances, true) . ' -->';
+        
+        // Sprawdź czy są bloki
+        global $wpdb;
+        $block_usage = $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->posts} 
+             WHERE post_content LIKE '%wp:indexfixer/not-indexed-posts%' 
+             AND post_status = 'publish'"
+        );
+        echo '<!-- DEBUG: block_usage: ' . $block_usage . ' -->';
+    }
+    
+    if (!empty($widget_urls)): 
+    ?>
+    <div style="margin-bottom: 20px; padding: 20px; background: #fff; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
+        <h2 style="margin-top: 0; margin-bottom: 20px; color: #23282d;">🎯 URL-e wyświetlane w widgetach</h2>
+        
+        <div style="background: #e7f3ff; padding: 15px; border-left: 3px solid #0073aa; margin-bottom: 20px;">
+            <p style="margin: 0;"><strong>ℹ️ Info:</strong> Te URL-e są aktualnie wyświetlane w Twoich widgetach IndexFixer i są automatycznie sprawdzane co 24h.</p>
+        </div>
+        
+        <table class="wp-list-table widefat fixed striped" style="margin-top: 15px;">
+            <thead>
+                <tr>
+                    <th style="width: 30%;">URL</th>
+                    <th style="width: 15%;">Tytuł</th>
+                    <th style="width: 12%;">Status</th>
+                    <th style="width: 15%;">Coverage State</th>
+                    <th style="width: 15%;">Źródło widgetu</th>
+                    <th style="width: 13%;">Ostatnie sprawdzenie</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($widget_urls as $url_data): ?>
+                    <?php
+                    $status_class = '';
+                    $status_text = 'Nieznany';
+                    
+                    if (isset($url_data->coverage_state)) {
+                        switch($url_data->coverage_state) {
+                            case 'Submitted and indexed':
+                                $status_class = 'indexed';
+                                $status_text = '✅ Zaindeksowane';
+                                break;
+                            case 'Crawled - currently not indexed':
+                                $status_class = 'not-indexed';
+                                $status_text = '❌ Nie zaindeksowane';
+                                break;
+                            case 'Discovered - currently not indexed':
+                                $status_class = 'discovered';
+                                $status_text = '🔍 Odkryte';
+                                break;
+                            default:
+                                $status_class = 'other';
+                                $status_text = '❓ ' . $url_data->coverage_state;
+                        }
+                    }
+                    
+                    $last_checked = $url_data->last_checked ? 
+                        date('Y-m-d H:i', strtotime($url_data->last_checked)) : 
+                        'Nigdy';
+                    ?>
+                    <tr>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="flex: 1; word-break: break-all; font-size: 12px;">
+                                    <a href="<?php echo esc_url($url_data->url); ?>" target="_blank" title="Otwórz URL">
+                                        <?php echo esc_html($url_data->url); ?>
+                                    </a>
+                                </span>
+                                <button type="button" 
+                                        class="button button-small check-single-url" 
+                                        data-url="<?php echo esc_attr($url_data->url); ?>"
+                                        title="Sprawdź status tego URL"
+                                        style="flex-shrink: 0;">
+                                    🔄
+                                </button>
+                            </div>
+                        </td>
+                        <td>
+                            <strong><?php echo esc_html($url_data->post_title ?: 'Bez tytułu'); ?></strong>
+                        </td>
+                        <td>
+                            <span class="widget-status <?php echo esc_attr($status_class); ?>" 
+                                  style="padding: 4px 8px; border-radius: 3px; font-size: 11px; font-weight: bold;">
+                                <?php echo esc_html($status_text); ?>
+                            </span>
+                        </td>
+                        <td style="font-size: 11px;">
+                            <?php echo esc_html($url_data->coverage_state ?: '-'); ?>
+                        </td>
+                        <td style="font-size: 11px;">
+                            <strong><?php echo esc_html($url_data->widget_source); ?></strong><br>
+                            <small style="color: #666;">Pokazuje <?php echo $url_data->widget_count; ?> URL-ów</small>
+                        </td>
+                        <td style="font-size: 11px;">
+                            <?php echo esc_html($last_checked); ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        
+        <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-left: 3px solid #ffc107;">
+            <p style="margin: 0; font-size: 13px;"><strong>💡 Tip:</strong> 
+            Gdy Google zaindeksuje któryś z tych URL-ów, automatycznie zniknie z widgetów i zostanie zastąpiony następnym niezaindeksowanym postem.
+            </p>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <div class="indexfixer-filters">
         <h2>Wszystkie URL-e</h2>
         <select id="status-filter">

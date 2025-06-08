@@ -3,7 +3,7 @@
  * Plugin Name: IndexFixer
  * Plugin URI: https://github.com/pavelzin/indexfixer.git
  * Description: Wtyczka do sprawdzania statusu indeksowania URL-i w Google Search Console
- * Version: 1.1.1
+ * Version: 1.1.5
  * Author: Pawel Zinkiewicz
  * Author URI: https://bynajmniej.pl
  * License: GPL v2 or later
@@ -23,7 +23,7 @@ if (!function_exists('add_action')) {
 }
 
 // Definicje stałych
-define('INDEXFIXER_VERSION', '1.1.1');
+define('INDEXFIXER_VERSION', '1.1.5');
 define('INDEXFIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INDEXFIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -49,6 +49,9 @@ require_once INDEXFIXER_PLUGIN_DIR . 'admin/dashboard.php';
 function indexfixer_init() {
     // Sprawdź i zaplanuj brakujące crony przy każdym ładowaniu
     indexfixer_ensure_crons_scheduled();
+    
+    // Inicjalizacja widget scheduler (automatyczne planowanie cronów widgetów)
+    IndexFixer_Widget_Scheduler::get_instance();
     
     // Inicjalizacja dashboardu
     new IndexFixer_Dashboard();
@@ -313,6 +316,9 @@ function indexfixer_ajax_check_single_url() {
 
 // Aktywacja wtyczki
 function indexfixer_activate() {
+    // Wyczyść stare crony (pozostałości z poprzednich wersji)
+    wp_clear_scheduled_hook('indexfixer_widget_daily_check'); // Stary cron widgetów
+    
     // Usuń logging - może crashować przy aktywacji
     if (!wp_next_scheduled('indexfixer_check_urls_event')) {
         wp_schedule_event(time(), 'daily', 'indexfixer_check_urls_event');
@@ -329,6 +335,7 @@ function indexfixer_deactivate() {
     wp_clear_scheduled_hook('indexfixer_check_urls_event');
     wp_clear_scheduled_hook('indexfixer_auto_refresh_tokens');
     wp_clear_scheduled_hook('indexfixer_daily_stats_save');
+    wp_clear_scheduled_hook('indexfixer_widget_daily_check'); // Stary cron widgetów
 }
 
 // Dodanie własnego interwału

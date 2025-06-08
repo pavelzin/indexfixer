@@ -373,6 +373,60 @@ class IndexFixer_Widget_Scheduler {
         
         return $urls_to_check;
     }
+    
+    /**
+     * PUBLICZNA: Pobiera wszystkie URL-e wyświetlane w aktywnych widgetach (dla dashboardu)
+     */
+    public static function get_all_widget_urls() {
+        $all_widget_urls = array();
+        
+        // 1. Pobierz URL-e z widget WordPress
+        $widget_instances = get_option('widget_indexfixer_not_indexed', array());
+        foreach ($widget_instances as $instance) {
+            if (!empty($instance['auto_check'])) {
+                $count = !empty($instance['count']) ? (int) $instance['count'] : 5;
+                $widget_urls = IndexFixer_Database::get_urls_by_status('not_indexed', $count);
+                
+                foreach ($widget_urls as $url_data) {
+                    $url_data->widget_source = 'WordPress Widget';
+                    $url_data->widget_count = $count;
+                    $all_widget_urls[$url_data->url] = $url_data; // Użyj URL jako klucz żeby uniknąć duplikatów
+                }
+            }
+        }
+        
+        // 2. Pobierz URL-e z blok widget (sprawdź wszystkie posty/strony z blokiem)
+        global $wpdb;
+        $posts_with_blocks = $wpdb->get_results(
+            "SELECT ID, post_title, post_content FROM {$wpdb->posts} 
+             WHERE post_content LIKE '%wp:indexfixer/not-indexed-posts%' 
+             AND post_status = 'publish'"
+        );
+        
+        foreach ($posts_with_blocks as $post) {
+            // Parsuj blok żeby wyciągnąć parametr count
+            preg_match('/wp:indexfixer\/not-indexed-posts\s*({[^}]*})?/', $post->post_content, $matches);
+            
+            $count = 5; // Domyślna wartość
+            if (!empty($matches[1])) {
+                $block_attrs = json_decode($matches[1], true);
+                if (isset($block_attrs['count'])) {
+                    $count = (int) $block_attrs['count'];
+                }
+            }
+            
+            $block_urls = IndexFixer_Database::get_urls_by_status('not_indexed', $count);
+            foreach ($block_urls as $url_data) {
+                if (!isset($all_widget_urls[$url_data->url])) { // Tylko jeśli jeszcze nie ma
+                    $url_data->widget_source = 'Blok w: ' . $post->post_title;
+                    $url_data->widget_count = $count;
+                    $all_widget_urls[$url_data->url] = $url_data;
+                }
+            }
+        }
+        
+        return array_values($all_widget_urls); // Zwróć jako zwykłą tablicę
+    }
 }
 
 // Inicjalizuj scheduler

@@ -235,7 +235,7 @@ class IndexFixer_Auth_Handler {
                 $expires_at = time() + intval($body['expires_in']);
             }
             update_option('indexfixer_gsc_token_expires_at', $expires_at);
-            IndexFixer_Logger::log(sprintf('Zapisano czas wygaśnięcia tokenu: %s', date('Y-m-d H:i:s', $expires_at)), 'info');
+            IndexFixer_Logger::log(sprintf('Zapisano czas wygaśnięcia tokenu: %s (UTC)', gmdate('Y-m-d H:i:s', $expires_at)), 'info');
             
             $update_result = function_exists('update_option') ? update_option('indexfixer_gsc_access_token', $this->access_token) : false;
             
@@ -312,7 +312,8 @@ class IndexFixer_Auth_Handler {
             update_option('indexfixer_gsc_token_expires_at', $expires_at);
             
             IndexFixer_Logger::log('Access Token został pomyślnie odnowiony', 'success');
-            IndexFixer_Logger::log(sprintf('Nowy token wygasa: %s', date('Y-m-d H:i:s', $expires_at)), 'info');
+            IndexFixer_Logger::log(sprintf('Nowy token wygasa: %s (UTC)', gmdate('Y-m-d H:i:s', $expires_at)), 'info');
+            IndexFixer_Logger::log(sprintf('Nowy token wygasa: %s (lokalny)', date('Y-m-d H:i:s', $expires_at)), 'info');
             return true;
         }
         
@@ -387,7 +388,7 @@ class IndexFixer_Auth_Handler {
                 if (isset($body['expires_in'])) {
                     $expires_at = $current_time + intval($body['expires_in']);
                     update_option('indexfixer_gsc_token_expires_at', $expires_at);
-                    IndexFixer_Logger::log(sprintf('Zapisano czas wygaśnięcia tokenu: %s', date('Y-m-d H:i:s', $expires_at)), 'info');
+                    IndexFixer_Logger::log(sprintf('Zapisano czas wygaśnięcia tokenu: %s (UTC)', gmdate('Y-m-d H:i:s', $expires_at)), 'info');
                     
                     // Sprawdź czy wygasa za mniej niż 5 minut
                     if ($expires_at - $current_time < 300) {

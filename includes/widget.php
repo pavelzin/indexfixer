@@ -45,11 +45,10 @@ class IndexFixer_Not_Indexed_Widget extends WP_Widget {
                 $post_title = $url_data->post_title ?: 'Bez tytułu';
                 $post_url = $url_data->url;
                 
-                echo '<li style="margin-bottom: 12px; padding: 8px; background: #f9f9f9; border-left: 3px solid #ff6b6b;">';
-                echo '<div style="font-weight: bold; margin-bottom: 4px;">';
+                echo '<li style="margin-bottom: 8px; padding: 0; border-bottom: 1px solid #eee; padding-bottom: 8px;">';
                 echo '<a href="' . esc_url($post_url) . '" title="' . esc_attr($post_title) . '">';
-                echo esc_html(wp_trim_words($post_title, 6));
-                echo '</a></div>';
+                echo esc_html(wp_trim_words($post_title, 8));
+                echo '</a>';
                 echo '</li>';
             }
             
