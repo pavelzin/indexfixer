@@ -1169,6 +1169,41 @@ class IndexFixer_Dashboard {
     }
     
     /**
+     * AJAX wymuś pełne odświeżenie (ignoruje cache)
+     */
+    public function ajax_force_full_refresh() {
+        check_ajax_referer('indexfixer_force_refresh', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        // Sprawdź czy proces nie jest już uruchomiony
+        $process_running = get_transient('indexfixer_process_running');
+        if ($process_running) {
+            wp_send_json_error('Proces sprawdzania jest już uruchomiony');
+        }
+        
+        IndexFixer_Logger::log('🔥 WYMUSZENIE PEŁNEGO ODŚWIEŻENIA - czyszczenie cache i uruchomienie sprawdzania', 'info');
+        
+        // KROK 1: Wyczyść cały cache
+        IndexFixer_Cache::clear_all_cache();
+        IndexFixer_Logger::log('🧹 Cache został wyczyszczony - wszystkie URL-e będą sprawdzone ponownie', 'success');
+        
+        // KROK 2: Uruchom sprawdzanie asynchronicznie
+        wp_schedule_single_event(time(), 'indexfixer_check_urls_event');
+        
+        // KROK 3: Ustaw flagę procesu
+        set_transient('indexfixer_process_running', true, 30 * MINUTE_IN_SECONDS);
+        
+        IndexFixer_Logger::log('🚀 Wymuszenie pełnego sprawdzania uruchomione w tle', 'success');
+        
+        wp_send_json_success(array(
+            'message' => 'Pełne sprawdzanie zostało uruchomione (cache wyczyszczony)'
+        ));
+    }
+    
+    /**
      * AJAX test systemu aktualizacji
      */
     public function ajax_test_updater() {

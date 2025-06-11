@@ -3,7 +3,7 @@
  * Plugin Name: IndexFixer
  * Plugin URI: https://github.com/pavelzin/indexfixer.git
  * Description: Wtyczka do sprawdzania statusu indeksowania URL-i w Google Search Console
- * Version: 1.1.6
+ * Version: 1.1.6.1
  * Author: Pawel Zinkiewicz
  * Author URI: https://bynajmniej.pl
  * License: GPL v2 or later
@@ -23,7 +23,7 @@ if (!function_exists('add_action')) {
 }
 
 // Definicje stałych
-define('INDEXFIXER_VERSION', '1.1.6');
+define('INDEXFIXER_VERSION', '1.1.6.1');
 define('INDEXFIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INDEXFIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
