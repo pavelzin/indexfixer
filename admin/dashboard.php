@@ -36,6 +36,7 @@ class IndexFixer_Dashboard {
         add_action('wp_ajax_indexfixer_run_manual_check', array($this, 'ajax_run_manual_check'));
         add_action('wp_ajax_indexfixer_get_schedule_status', array($this, 'ajax_get_schedule_status'));
         add_action('wp_ajax_indexfixer_save_today_stats', array($this, 'ajax_save_today_stats'));
+        add_action('wp_ajax_indexfixer_force_full_refresh', array($this, 'ajax_force_full_refresh'));
         add_action('wp_ajax_indexfixer_test_refresh_token', array($this, 'ajax_test_refresh_token'));
         add_action('wp_ajax_indexfixer_test_updater', array($this, 'ajax_test_updater'));
         add_action('wp_ajax_indexfixer_schedule_token_cron', array($this, 'ajax_schedule_token_cron'));

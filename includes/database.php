@@ -212,9 +212,6 @@ class IndexFixer_Database {
         
         $table_name = self::get_table_name();
         
-        // DEBUG: Dodaj szczegółowe logowanie
-        IndexFixer_Logger::log("🔍 DEBUG: get_urls_by_status('$status', $limit, $offset) - tabela: $table_name", 'info');
-        
         // Mapuj logiczne statusy na prawdziwe kolumny w bazie
         $where_clause = '';
         
@@ -244,8 +241,6 @@ class IndexFixer_Database {
                 $where_clause = $wpdb->prepare("u.status = %s", $status);
         }
         
-        IndexFixer_Logger::log("🔍 DEBUG: WHERE clause dla '$status': $where_clause", 'info');
-        
         $sql = "SELECT u.*, p.post_title, p.post_type, p.post_date 
                 FROM $table_name u 
                 LEFT JOIN {$wpdb->posts} p ON u.post_id = p.ID 
@@ -253,20 +248,7 @@ class IndexFixer_Database {
                 ORDER BY u.last_status_change DESC, u.last_checked ASC 
                 LIMIT %d OFFSET %d";
         
-        $final_sql = $wpdb->prepare($sql, $limit, $offset);
-        IndexFixer_Logger::log("🔍 DEBUG: Finalne zapytanie SQL: $final_sql", 'info');
-        
-        $results = $wpdb->get_results($final_sql);
-        
-        IndexFixer_Logger::log("🔍 DEBUG: Zapytanie zwróciło " . count($results) . " wyników", 'info');
-        
-        // DEBUG: Sprawdź też ogólne statystyki tabeli
-        $total_rows = $wpdb->get_var("SELECT COUNT(*) FROM $table_name");
-        IndexFixer_Logger::log("🔍 DEBUG: Łączna liczba wierszy w tabeli: $total_rows", 'info');
-        
-        // DEBUG: Sprawdź przykładowe dane
-        $sample_rows = $wpdb->get_results("SELECT url, status, verdict, coverage_state FROM $table_name LIMIT 5");
-        IndexFixer_Logger::log("🔍 DEBUG: Pierwsze 5 wierszy w tabeli: " . print_r($sample_rows, true), 'info');
+        $results = $wpdb->get_results($wpdb->prepare($sql, $limit, $offset));
         
         return $results;
     }

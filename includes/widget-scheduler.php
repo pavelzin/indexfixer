@@ -380,36 +380,20 @@ class IndexFixer_Widget_Scheduler {
     public static function get_all_widget_urls() {
         $all_widget_urls = array();
         
-        // DEBUG: Dodaj szczegółowe logowanie
-        IndexFixer_Logger::log("🔍 DEBUG: Rozpoczęcie get_all_widget_urls()", 'info');
-        
         // 1. Pobierz URL-e z widget WordPress
         $widget_instances = get_option('widget_indexfixer_not_indexed', array());
-        IndexFixer_Logger::log("🔍 DEBUG: widget_instances z bazy: " . print_r($widget_instances, true), 'info');
-        
-        $active_widget_count = 0;
-        foreach ($widget_instances as $key => $instance) {
-            IndexFixer_Logger::log("🔍 DEBUG: Sprawdzam widget instance $key: " . print_r($instance, true), 'info');
-            
+        foreach ($widget_instances as $instance) {
             if (!empty($instance['auto_check'])) {
-                $active_widget_count++;
                 $count = !empty($instance['count']) ? (int) $instance['count'] : 5;
-                IndexFixer_Logger::log("🔍 DEBUG: Aktywny widget znaleziony! Count: $count", 'info');
-                
                 $widget_urls = IndexFixer_Database::get_urls_by_status('not_indexed', $count);
-                IndexFixer_Logger::log("🔍 DEBUG: get_urls_by_status('not_indexed', $count) zwróciło: " . count($widget_urls) . " URL-ów", 'info');
                 
                 foreach ($widget_urls as $url_data) {
                     $url_data->widget_source = 'WordPress Widget';
                     $url_data->widget_count = $count;
                     $all_widget_urls[$url_data->url] = $url_data; // Użyj URL jako klucz żeby uniknąć duplikatów
                 }
-            } else {
-                IndexFixer_Logger::log("🔍 DEBUG: Widget instance $key NIE MA auto_check lub jest pusty", 'info');
             }
         }
-        
-        IndexFixer_Logger::log("🔍 DEBUG: Znaleziono $active_widget_count aktywnych widget(ów) WordPress", 'info');
         
         // 2. Pobierz URL-e z blok widget (sprawdź wszystkie posty/strony z blokiem)
         global $wpdb;
@@ -418,8 +402,6 @@ class IndexFixer_Widget_Scheduler {
              WHERE post_content LIKE '%wp:indexfixer/not-indexed-posts%' 
              AND post_status = 'publish'"
         );
-        
-        IndexFixer_Logger::log("🔍 DEBUG: Znaleziono " . count($posts_with_blocks) . " postów z blokami IndexFixer", 'info');
         
         foreach ($posts_with_blocks as $post) {
             // Parsuj blok żeby wyciągnąć parametr count
@@ -433,8 +415,6 @@ class IndexFixer_Widget_Scheduler {
                 }
             }
             
-            IndexFixer_Logger::log("🔍 DEBUG: Blok w poście '{$post->post_title}' (ID: {$post->ID}) ma count: $count", 'info');
-            
             $block_urls = IndexFixer_Database::get_urls_by_status('not_indexed', $count);
             foreach ($block_urls as $url_data) {
                 if (!isset($all_widget_urls[$url_data->url])) { // Tylko jeśli jeszcze nie ma
@@ -444,8 +424,6 @@ class IndexFixer_Widget_Scheduler {
                 }
             }
         }
-        
-        IndexFixer_Logger::log("🔍 DEBUG: Łącznie znaleziono " . count($all_widget_urls) . " unikalnych URL-ów z widgetów", 'info');
         
         return array_values($all_widget_urls); // Zwróć jako zwykłą tablicę
     }

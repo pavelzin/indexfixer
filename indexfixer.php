@@ -3,7 +3,7 @@
  * Plugin Name: IndexFixer
  * Plugin URI: https://github.com/pavelzin/indexfixer.git
  * Description: Wtyczka do sprawdzania statusu indeksowania URL-i w Google Search Console
- * Version: 1.1.5
+ * Version: 1.1.6
  * Author: Pawel Zinkiewicz
  * Author URI: https://bynajmniej.pl
  * License: GPL v2 or later
@@ -23,7 +23,7 @@ if (!function_exists('add_action')) {
 }
 
 // Definicje stałych
-define('INDEXFIXER_VERSION', '1.1.5');
+define('INDEXFIXER_VERSION', '1.1.6');
 define('INDEXFIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INDEXFIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -133,12 +133,22 @@ function indexfixer_ajax_refresh_data() {
         wp_send_json_error('Brak uprawnień');
     }
     
-    IndexFixer_Logger::log('Ręczne odświeżanie danych', 'info');
-    indexfixer_check_urls();
+    // Sprawdź czy proces nie jest już uruchomiony
+    $process_running = get_transient('indexfixer_process_running');
+    if ($process_running) {
+        wp_send_json_error('Proces sprawdzania jest już uruchomiony');
+    }
+    
+    // UNIFIKACJA: Uruchom sprawdzanie w tle (asynchronicznie) - tak samo jak dashboard widget
+    wp_schedule_single_event(time(), 'indexfixer_check_urls_event');
+    
+    // Ustaw flagę procesu
+    set_transient('indexfixer_process_running', true, 30 * MINUTE_IN_SECONDS);
+    
+    IndexFixer_Logger::log('Ręczne odświeżanie danych uruchomione w tle', 'info');
     
     wp_send_json_success(array(
-        'message' => 'Dane zostały odświeżone',
-        'logs' => IndexFixer_Logger::format_logs()
+        'message' => 'Sprawdzanie zostało uruchomione w tle'
     ));
 }
 
@@ -428,10 +438,12 @@ function indexfixer_check_urls() {
             $url_data['url']
         ), 'info');
         
-        // Sprawdź czy URL już ma cache
+        // Sprawdź czy URL już ma POPRAWNE dane w cache
         $cached_status = IndexFixer_Cache::get_url_status($url_data['url']);
-        if ($cached_status !== false) {
-            IndexFixer_Logger::log(sprintf('💾 URL już w cache - pomijam: %s', $url_data['url']), 'info');
+        if ($cached_status !== false && is_array($cached_status) && 
+            isset($cached_status['verdict']) && $cached_status['verdict'] !== 'unknown' &&
+            isset($cached_status['coverageState']) && $cached_status['coverageState'] !== 'unknown') {
+            IndexFixer_Logger::log(sprintf('💾 URL ma kompletne dane w cache - pomijam: %s', $url_data['url']), 'info');
             $skipped++;
             continue;
         }

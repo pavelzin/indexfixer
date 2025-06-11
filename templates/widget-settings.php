@@ -82,6 +82,22 @@ if (!defined('ABSPATH')) {
                 🔄 Wznów Sprawdzanie URL-ów
             </button>
             <div id="resume-result" style="margin-top: 10px;"></div>
+            
+            <hr style="margin: 30px 0;">
+            
+            <h3>🔥 Wymuś Pełne Odświeżenie</h3>
+            <p><strong>Wymusza sprawdzenie WSZYSTKICH URL-ów</strong> (ignoruje cache):</p>
+            <div style="background: #fff3cd; padding: 10px; border-left: 3px solid #ffc107; margin: 10px 0; font-size: 14px;">
+                <strong>⚠️ Jak to działa:</strong><br>
+                • Wyczyści CAŁY cache (24h) wszystkich URL-ów<br>
+                • Sprawdzi ponownie WSZYSTKIE URL-e przez Google API<br>
+                • Może potrwać 20+ minut dla 458 URL-ów<br>
+                • Użyj gdy chcesz "odświeżyć bazę ręcznie"
+            </div>
+            <button type="button" onclick="forceFullRefresh()" class="button" style="background: #ff6b35; border-color: #ff6b35; color: white; font-weight: bold;">
+                🔥 WYMUŚ PEŁNE ODŚWIEŻENIE (wyczyść cache + sprawdź wszystkie)
+            </button>
+            <div id="force-refresh-result" style="margin-top: 10px;"></div>
         </div>
 
         <div style="margin-top: 20px;">
@@ -409,6 +425,49 @@ function resumeChecking() {
                     resultDiv.innerHTML += '<br><div style="color: #0073aa; font-size: 12px;">' + data.data.details + '</div>';
                 }, 1000);
             }
+        } else {
+            resultDiv.innerHTML = '<div style="color: #d63638;">❌ ' + data.data + '</div>';
+        }
+    })
+    .catch(error => {
+        resultDiv.innerHTML = '<div style="color: #d63638;">❌ Błąd: ' + error.message + '</div>';
+    });
+}
+
+function forceFullRefresh() {
+    if (!confirm('⚠️ UWAGA: To wyczyści cały cache i sprawdzi WSZYSTKIE URL-e przez API Google.\n\nMoże potrwać 20+ minut.\n\nCzy na pewno chcesz kontynuować?')) {
+        return;
+    }
+    
+    const resultDiv = document.getElementById('force-refresh-result');
+    resultDiv.innerHTML = '<div style="color: #ff6b35; font-weight: bold;">🔥 Czyszczę cache i wymuszam pełne odświeżenie...</div>';
+    
+    fetch(ajaxurl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'indexfixer_force_full_refresh',
+            nonce: '<?php echo wp_create_nonce('indexfixer_force_refresh'); ?>'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            resultDiv.innerHTML = '<div style="color: #00a32a;">✅ ' + data.data.message + '</div>';
+            
+            // Pokaż szczegóły postępu
+            if (data.data.details) {
+                setTimeout(() => {
+                    resultDiv.innerHTML += '<br><div style="color: #0073aa; font-size: 12px;">' + data.data.details + '</div>';
+                }, 1000);
+            }
+            
+            // Informacja o logach
+            setTimeout(() => {
+                resultDiv.innerHTML += '<br><div style="color: #666; font-size: 12px;">📊 Sprawdź logi aby śledzić postęp sprawdzania wszystkich URL-ów</div>';
+            }, 2000);
         } else {
             resultDiv.innerHTML = '<div style="color: #d63638;">❌ ' + data.data + '</div>';
         }
