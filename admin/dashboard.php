@@ -42,6 +42,7 @@ class IndexFixer_Dashboard {
         add_action('wp_ajax_indexfixer_schedule_token_cron', array($this, 'ajax_schedule_token_cron'));
         add_action('wp_ajax_indexfixer_force_rebuild_widget_schedule', array($this, 'ajax_force_rebuild_widget_schedule'));
         add_action('wp_ajax_indexfixer_test_stats_cron', array($this, 'ajax_test_stats_cron'));
+        add_action('wp_ajax_indexfixer_diagnose_widgets', array($this, 'ajax_diagnose_widgets'));
     }
     
     /**
@@ -1365,6 +1366,178 @@ class IndexFixer_Dashboard {
         wp_send_json_success(array(
             'message' => 'Test crona zapisywania statystyk został wykonany',
             'logs' => $logs
+        ));
+    }
+    
+    /**
+     * AJAX diagnostyka widgetów
+     */
+    public function ajax_diagnose_widgets() {
+        check_ajax_referer('indexfixer_widgets_diagnostic', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Brak uprawnień');
+        }
+        
+        IndexFixer_Logger::log('🔍 Uruchomiono diagnostykę widgetów', 'info');
+        
+        // Przygotuj raport HTML
+        $report = '<div style="line-height: 1.7;">';
+        
+        // 1. Sprawdź widget WordPress
+        $report .= '<h3 style="color: #0073aa; margin: 15px 0 10px;">1. Widget WordPress</h3>';
+        
+        $widget_instances = get_option('widget_indexfixer_not_indexed', array());
+        $report .= '<div><strong>Znaleziono instancji:</strong> ' . (count($widget_instances) - 1) . '</div>'; // -1, bo często jest pusty element
+        
+        $has_active_widgets = false;
+        $active_widgets_html = '<ul style="background: #f0f0f0; padding: 10px 30px; margin: 10px 0; max-height: 150px; overflow-y: auto;">';
+        
+        foreach ($widget_instances as $key => $instance) {
+            // Pomiń pusty element (często z indeksem 0 lub "_multiwidget")
+            if (!is_array($instance)) {
+                continue;
+            }
+            
+            $title = !empty($instance['title']) ? $instance['title'] : 'Bez tytułu';
+            $count = !empty($instance['count']) ? (int) $instance['count'] : 5;
+            $auto_check = !empty($instance['auto_check']) ? 'TAK' : 'NIE';
+            $color = !empty($instance['auto_check']) ? '#46b450' : '#dc3232';
+            
+            $active_widgets_html .= sprintf(
+                '<li>Widget #%s: <strong>%s</strong> (pokazuje: %d URL-i, auto_check: <span style="color: %s">%s</span>)</li>',
+                $key, $title, $count, $color, $auto_check
+            );
+            
+            if (!empty($instance['auto_check'])) {
+                $has_active_widgets = true;
+            }
+        }
+        
+        $active_widgets_html .= '</ul>';
+        
+        if (count($widget_instances) <= 1) {
+            $report .= '<div style="color: #dc3232;"><strong>❌ PROBLEM:</strong> Brak widgetów WordPressa</div>';
+        } else {
+            $report .= $active_widgets_html;
+            
+            if (!$has_active_widgets) {
+                $report .= '<div style="color: #dc3232;"><strong>❌ PROBLEM:</strong> Żaden widget nie ma włączonej opcji "auto_check"</div>';
+            } else {
+                $report .= '<div style="color: #46b450;"><strong>✅ OK:</strong> Znaleziono widgety z włączoną opcją auto_check</div>';
+            }
+        }
+        
+        // 2. Sprawdź bloki Gutenberga
+        $report .= '<h3 style="color: #0073aa; margin: 15px 0 10px;">2. Bloki Gutenberga</h3>';
+        
+        global $wpdb;
+        $block_usage = $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->posts} 
+             WHERE post_content LIKE '%wp:indexfixer/not-indexed-posts%' 
+             AND post_status = 'publish'"
+        );
+        
+        $report .= '<div><strong>Znaleziono bloków:</strong> ' . intval($block_usage) . '</div>';
+        
+        if ($block_usage > 0) {
+            $posts_with_blocks = $wpdb->get_results(
+                "SELECT ID, post_title, post_content FROM {$wpdb->posts} 
+                 WHERE post_content LIKE '%wp:indexfixer/not-indexed-posts%' 
+                 AND post_status = 'publish'"
+            );
+            
+            $blocks_html = '<ul style="background: #f0f0f0; padding: 10px 30px; margin: 10px 0; max-height: 150px; overflow-y: auto;">';
+            foreach ($posts_with_blocks as $post) {
+                // Parsuj blok żeby wyciągnąć parametr autoCheck
+                preg_match('/wp:indexfixer\/not-indexed-posts\s*({[^}]*})?/', $post->post_content, $matches);
+                
+                $auto_check = 'NIE';
+                $color = '#dc3232';
+                
+                if (!empty($matches[1])) {
+                    $block_attrs = json_decode($matches[1], true);
+                    if (isset($block_attrs['autoCheck']) && $block_attrs['autoCheck']) {
+                        $auto_check = 'TAK';
+                        $color = '#46b450';
+                    }
+                }
+                
+                $blocks_html .= sprintf(
+                    '<li>Post #%d: <strong>%s</strong> (auto_check: <span style="color: %s">%s</span>)</li>',
+                    $post->ID, $post->post_title, $color, $auto_check
+                );
+            }
+            $blocks_html .= '</ul>';
+            
+            $report .= $blocks_html;
+            $report .= '<div style="color: #46b450;"><strong>✅ OK:</strong> Znaleziono bloki IndexFixer</div>';
+        } else {
+            $report .= '<div style="color: #dc3232;"><strong>❌ PROBLEM:</strong> Brak bloków Gutenberga</div>';
+        }
+        
+        // 3. Sprawdź czy są URL-e do pokazania
+        $report .= '<h3 style="color: #0073aa; margin: 15px 0 10px;">3. URL-e do pokazania w widgetach</h3>';
+        
+        $not_indexed_urls = IndexFixer_Database::get_urls_by_status('not_indexed', 10);
+        $report .= '<div><strong>Znaleziono URL-i niezaindeksowanych:</strong> ' . count($not_indexed_urls) . '</div>';
+        
+        if (!empty($not_indexed_urls)) {
+            $urls_html = '<ul style="background: #f0f0f0; padding: 10px 30px; margin: 10px 0; max-height: 150px; overflow-y: auto;">';
+            foreach ($not_indexed_urls as $url_data) {
+                $urls_html .= sprintf(
+                    '<li><strong>%s</strong> - %s</li>',
+                    $url_data->post_title ?: 'Bez tytułu',
+                    $url_data->url
+                );
+            }
+            $urls_html .= '</ul>';
+            
+            $report .= $urls_html;
+            $report .= '<div style="color: #46b450;"><strong>✅ OK:</strong> Znaleziono URL-e do pokazania w widgetach</div>';
+        } else {
+            $report .= '<div style="color: #dc3232;"><strong>❌ PROBLEM:</strong> Brak URL-i do pokazania w widgetach</div>';
+            
+            // Sprawdź szczegóły dlaczego brak URL-i
+            $neutral_count = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}indexfixer_urls WHERE verdict = 'NEUTRAL'");
+            $not_indexed_count = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}indexfixer_urls WHERE coverage_state LIKE '%not indexed%'");
+            
+            $report .= '<div style="margin-top: 10px;">';
+            $report .= '<div><strong>URL-e z verdict = NEUTRAL:</strong> ' . $neutral_count . '</div>';
+            $report .= '<div><strong>URL-e zawierające "not indexed" w coverage_state:</strong> ' . $not_indexed_count . '</div>';
+            $report .= '</div>';
+        }
+        
+        // 4. Sprawdź czy scheduler widgetów jest aktywny
+        $report .= '<h3 style="color: #0073aa; margin: 15px 0 10px;">4. Scheduler widgetów</h3>';
+        
+        // Pobranie nazwy hooka z klasy Scheduler
+        $hook_name = IndexFixer_Widget_Scheduler::$hook_name;
+        $next_run = wp_next_scheduled($hook_name);
+        
+        if ($next_run) {
+            $next_run_local = date('Y-m-d H:i:s', $next_run + (get_option('gmt_offset') * 3600));
+            $report .= '<div style="color: #46b450;"><strong>✅ OK:</strong> Scheduler aktywny, następne uruchomienie: ' . $next_run_local . '</div>';
+            $report .= '<div>Hook: <code>' . $hook_name . '</code></div>';
+        } else {
+            $report .= '<div style="color: #dc3232;"><strong>❌ PROBLEM:</strong> Brak zaplanowanych zadań sprawdzania widgetów</div>';
+            $report .= '<div>Szukano hooka: <code>' . $hook_name . '</code></div>';
+            
+            // Sprawdź dlaczego nie jest aktywny
+            $instance = IndexFixer_Widget_Scheduler::get_instance();
+            $widgets_active = $instance->are_widgets_active();
+            
+            if ($widgets_active) {
+                $report .= '<div style="color: #dc3232;">Widgety są aktywne, ale zadanie nie jest zaplanowane - możliwy błąd WP-Cron</div>';
+            } else {
+                $report .= '<div>Scheduler nieaktywny, ponieważ funkcja are_widgets_active() zwraca false</div>';
+            }
+        }
+        
+        $report .= '</div>';
+        
+        wp_send_json_success(array(
+            'html' => $report
         ));
     }
 } 

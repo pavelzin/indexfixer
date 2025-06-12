@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
 class IndexFixer_Widget_Scheduler {
     
     private static $instance = null;
-    private static $hook_name = 'indexfixer_widget_check';
+    public static $hook_name = 'indexfixer_widget_check'; // Zmieniono na public żeby było dostępne z zewnątrz
     private static $test_mode = false;
     private static $test_interval = 600; // 10 minut dla testów
     private static $production_interval = 86400; // 24 godziny dla produkcji
@@ -156,8 +156,9 @@ class IndexFixer_Widget_Scheduler {
     
     /**
      * Sprawdza czy jakikolwiek widget ma włączone auto_check
+     * @return bool True jeśli znaleziono aktywne widgety
      */
-    private function are_widgets_active() {
+    public function are_widgets_active() {
         // Sprawdź widget WordPress
         $widget_instances = get_option('widget_indexfixer_not_indexed', array());
         foreach ($widget_instances as $instance) {
