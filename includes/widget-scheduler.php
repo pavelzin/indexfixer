@@ -159,26 +159,59 @@ class IndexFixer_Widget_Scheduler {
      * @return bool True jeśli znaleziono aktywne widgety
      */
     public function are_widgets_active() {
-        // Sprawdź widget WordPress
+        $force_active = apply_filters('indexfixer_force_widgets_active', false);
+        if ($force_active === true) {
+            IndexFixer_Logger::log("🔧 Aktywność widgetów wymuszona przez filtr", 'info');
+            return true;
+        }
+        // Sprawdź klasyczne widgety
         $widget_instances = get_option('widget_indexfixer_not_indexed', array());
-        foreach ($widget_instances as $instance) {
-            if (!empty($instance['auto_check'])) {
-                return true;
+        $active_instance_found = false;
+        foreach ($widget_instances as $key => $instance) {
+            if (is_numeric($key) && is_array($instance) && !empty($instance)) {
+                IndexFixer_Logger::log("📊 Znaleziono instancję widgetu #{$key}", 'debug');
+                if (!empty($instance['auto_check'])) {
+                    IndexFixer_Logger::log("✅ Znaleziono aktywny widget #{$key} z włączonym auto_check", 'info');
+                    $active_instance_found = true;
+                    break;
+                }
             }
         }
-        
-        // Sprawdź blok widget (sprawdź czy jest używany w postach/stronach)
+        if ($active_instance_found) {
+            return true;
+        }
+        // NOWOŚĆ: Wykrywanie bloków IndexFixer w sidebarach (Gutenberg)
+        $sidebars_widgets = get_option('sidebars_widgets', array());
+        foreach ($sidebars_widgets as $sidebar_id => $widgets) {
+            if (!is_array($widgets)) continue;
+            foreach ($widgets as $widget_id) {
+                // Sprawdź czy to blok IndexFixer (np. block-2, block-3...)
+                if (strpos($widget_id, 'block-') === 0) {
+                    // Pobierz zawartość bloku z bazy danych
+                    global $wpdb;
+                    $post = $wpdb->get_row($wpdb->prepare(
+                        "SELECT post_content FROM {$wpdb->posts} WHERE ID = %d AND post_status = 'publish'",
+                        (int)str_replace('block-', '', $widget_id)
+                    ));
+                    if ($post && strpos($post->post_content, 'wp:indexfixer/not-indexed-posts') !== false) {
+                        IndexFixer_Logger::log("🟩 Znaleziono blok IndexFixer w sidebarze '{$sidebar_id}' (ID: {$widget_id})", 'info');
+                        return true;
+                    }
+                }
+            }
+        }
+        // Sprawdź bloki IndexFixer w postach/stronach (jak dotychczas)
         global $wpdb;
         $block_usage = $wpdb->get_var(
             "SELECT COUNT(*) FROM {$wpdb->posts} 
              WHERE post_content LIKE '%wp:indexfixer/not-indexed-posts%' 
              AND post_status = 'publish'"
         );
-        
         if ($block_usage > 0) {
+            IndexFixer_Logger::log("✅ Znaleziono {$block_usage} bloków Gutenberga", 'info');
             return true;
         }
-        
+        IndexFixer_Logger::log("❌ Nie znaleziono aktywnych widgetów ani bloków", 'warning');
         return false;
     }
     
@@ -323,8 +356,13 @@ class IndexFixer_Widget_Scheduler {
             if (!empty($instance['auto_check'])) {
                 $count = !empty($instance['count']) ? (int) $instance['count'] : 5;
                 $widget_urls = IndexFixer_Database::get_urls_by_status('not_indexed', $count);
-                
                 foreach ($widget_urls as $url_data) {
+                    // Dodajemy logikę widget_since
+                    if (empty($url_data->widget_since)) {
+                        // Ustaw widget_since na dziś jeśli nie było
+                        IndexFixer_Database::save_url_status($url_data->post_id, $url_data->url, array_merge((array)$url_data, ['widget_since' => current_time('mysql')]));
+                        $url_data->widget_since = current_time('mysql');
+                    }
                     $all_widget_urls[$url_data->url] = $url_data; // Użyj URL jako klucz żeby uniknąć duplikatów
                 }
             }
@@ -340,8 +378,7 @@ class IndexFixer_Widget_Scheduler {
         
         foreach ($posts_with_blocks as $post) {
             // Parsuj blok żeby wyciągnąć parametr count
-            preg_match('/wp:indexfixer\/not-indexed-posts\s*({[^}]*})?/', $post->post_content, $matches);
-            
+            preg_match('/wp:indexfixer\\/not-indexed-posts\\s*({[^}]*})?/', $post->post_content, $matches);
             $count = 5; // Domyślna wartość
             if (!empty($matches[1])) {
                 $block_attrs = json_decode($matches[1], true);
@@ -349,10 +386,18 @@ class IndexFixer_Widget_Scheduler {
                     $count = (int) $block_attrs['count'];
                 }
             }
-            
             $block_urls = IndexFixer_Database::get_urls_by_status('not_indexed', $count);
             foreach ($block_urls as $url_data) {
-                $all_widget_urls[$url_data->url] = $url_data; // Użyj URL jako klucz żeby uniknąć duplikatów
+                if (!isset($all_widget_urls[$url_data->url])) { // Tylko jeśli jeszcze nie ma
+                    // Dodajemy logikę widget_since
+                    if (empty($url_data->widget_since)) {
+                        IndexFixer_Database::save_url_status($url_data->post_id, $url_data->url, array_merge((array)$url_data, ['widget_since' => current_time('mysql')]));
+                        $url_data->widget_since = current_time('mysql');
+                    }
+                    $url_data->widget_source = 'Blok w: ' . $post->post_title;
+                    $url_data->widget_count = $count;
+                    $all_widget_urls[$url_data->url] = $url_data;
+                }
             }
         }
         
@@ -406,8 +451,7 @@ class IndexFixer_Widget_Scheduler {
         
         foreach ($posts_with_blocks as $post) {
             // Parsuj blok żeby wyciągnąć parametr count
-            preg_match('/wp:indexfixer\/not-indexed-posts\s*({[^}]*})?/', $post->post_content, $matches);
-            
+            preg_match('/wp:indexfixer\\/not-indexed-posts\\s*({[^}]*})?/', $post->post_content, $matches);
             $count = 5; // Domyślna wartość
             if (!empty($matches[1])) {
                 $block_attrs = json_decode($matches[1], true);
@@ -415,7 +459,6 @@ class IndexFixer_Widget_Scheduler {
                     $count = (int) $block_attrs['count'];
                 }
             }
-            
             $block_urls = IndexFixer_Database::get_urls_by_status('not_indexed', $count);
             foreach ($block_urls as $url_data) {
                 if (!isset($all_widget_urls[$url_data->url])) { // Tylko jeśli jeszcze nie ma
@@ -427,6 +470,82 @@ class IndexFixer_Widget_Scheduler {
         }
         
         return array_values($all_widget_urls); // Zwróć jako zwykłą tablicę
+    }
+    
+    /**
+     * Zwraca raport diagnostyczny o widgetach
+     * @return array Szczegółowe informacje o stanie widgetów
+     */
+    public static function get_widget_diagnostic_report() {
+        global $wpdb;
+        $instance = self::get_instance();
+        $report = array();
+        
+        // 1. Sprawdź opcję widget_indexfixer_not_indexed
+        $widget_instances = get_option('widget_indexfixer_not_indexed', array());
+        $active_instances = array();
+        
+        foreach ($widget_instances as $key => $instance_data) {
+            if (is_numeric($key) && !empty($instance_data)) {
+                $active_instances[$key] = $instance_data;
+            }
+        }
+        
+        $report['widget_option'] = array(
+            'raw_data' => $widget_instances,
+            'active_instances' => $active_instances,
+            'count' => count($active_instances)
+        );
+        
+        // 2. Sprawdź sidebars_widgets
+        $sidebars_widgets = get_option('sidebars_widgets', array());
+        $found_in_sidebars = array();
+        
+        foreach ($sidebars_widgets as $sidebar_id => $widgets) {
+            if (!is_array($widgets)) continue;
+            
+            foreach ($widgets as $widget_id) {
+                if (strpos($widget_id, 'indexfixer_not_indexed-') === 0) {
+                    $id_parts = explode('-', $widget_id);
+                    $instance_id = isset($id_parts[1]) ? (int)$id_parts[1] : 0;
+                    $found_in_sidebars[] = array(
+                        'sidebar_id' => $sidebar_id,
+                        'widget_id' => $widget_id,
+                        'instance_id' => $instance_id
+                    );
+                }
+            }
+        }
+        
+        $report['sidebars'] = array(
+            'found_instances' => $found_in_sidebars,
+            'count' => count($found_in_sidebars)
+        );
+        
+        // 3. Sprawdź bloki Gutenberga
+        $block_usage = $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->posts} 
+             WHERE post_content LIKE '%wp:indexfixer/not-indexed-posts%' 
+             AND post_status = 'publish'"
+        );
+        
+        $report['gutenberg_blocks'] = array(
+            'count' => (int)$block_usage,
+            'query_result' => $block_usage
+        );
+        
+        // 4. Sprawdź wynik funkcji are_widgets_active
+        $is_active = $instance->are_widgets_active();
+        $force_active = apply_filters('indexfixer_force_widgets_active', false);
+        
+        $report['status'] = array(
+            'is_active' => $is_active,
+            'force_active' => $force_active,
+            'hook_name' => self::$hook_name,
+            'next_scheduled' => wp_next_scheduled(self::$hook_name)
+        );
+        
+        return $report;
     }
 }
 

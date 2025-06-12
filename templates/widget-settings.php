@@ -247,22 +247,6 @@ if (!defined('ABSPATH')) {
             </ul>
         </div>
     </div>
-    
-    <!-- NOWA SEKCJA: Diagnostyka widgetów -->
-    <div style="margin-top: 20px;">
-        <h3>🩺 Diagnostyka widgetów</h3>
-        <p>Użyj tego narzędzia, aby zdiagnozować problemy z wykrywaniem widgetów:</p>
-        
-        <button type="button" onclick="runWidgetDiagnostic()" class="button button-secondary">
-            🔍 Uruchom diagnostykę widgetów
-        </button>
-        
-        <div id="diagnostic-loading" style="display:none; margin-top: 10px;">
-            <span class="spinner is-active" style="float:left; margin-top: 0;"></span> Analizuję...
-        </div>
-        
-        <div id="diagnostic-result" style="margin-top: 20px; background: #f8f9fa; padding: 15px; border: 1px solid #ddd; display: none; max-height: 400px; overflow-y: auto; font-family: monospace;"></div>
-    </div>
 </div>
 
 <script>
@@ -741,40 +725,4 @@ jQuery(document).ready(function($) {
     // Załaduj status przy starcie
     refreshScheduleStatus();
 });
-
-// Funkcja do diagnostyki widgetów
-function runWidgetDiagnostic() {
-    var resultDiv = document.getElementById('diagnostic-result');
-    var loadingDiv = document.getElementById('diagnostic-loading');
-    
-    resultDiv.style.display = 'none';
-    loadingDiv.style.display = 'block';
-    
-    fetch(ajaxurl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-            action: 'indexfixer_diagnose_widgets',
-            nonce: '<?php echo wp_create_nonce('indexfixer_widgets_diagnostic'); ?>'
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        loadingDiv.style.display = 'none';
-        resultDiv.style.display = 'block';
-        
-        if (data.success) {
-            resultDiv.innerHTML = '<h4>📊 Raport diagnostyczny</h4>' + data.data.html;
-        } else {
-            resultDiv.innerHTML = '<div style="color: #dc3232;">❌ ' + data.data + '</div>';
-        }
-    })
-    .catch(error => {
-        loadingDiv.style.display = 'none';
-        resultDiv.style.display = 'block';
-        resultDiv.innerHTML = '<div style="color: #dc3232;">❌ Błąd: ' + error.message + '</div>';
-    });
-}
 </script> 

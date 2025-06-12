@@ -156,6 +156,7 @@ if (!defined('ABSPATH')) {
                     <th style="width: 15%;">Coverage State</th>
                     <th style="width: 15%;">Źródło widgetu</th>
                     <th style="width: 13%;">Ostatnie sprawdzenie</th>
+                    <th style="width: 10%;">Dni w widgetcie</th>
                 </tr>
             </thead>
             <tbody>
@@ -223,6 +224,18 @@ if (!defined('ABSPATH')) {
                         </td>
                         <td style="font-size: 11px;">
                             <?php echo esc_html($last_checked); ?>
+                        </td>
+                        <td style="font-size: 11px;">
+                            <?php
+                            if (!empty($url_data->widget_since)) {
+                                $since = strtotime($url_data->widget_since);
+                                $now = time();
+                                $days = floor(($now - $since) / 86400);
+                                echo $days >= 0 ? $days : '-';
+                            } else {
+                                echo '-';
+                            }
+                            ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>

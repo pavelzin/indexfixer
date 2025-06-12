@@ -50,6 +50,12 @@ function indexfixer_init() {
     // Sprawdź i zaplanuj brakujące crony przy każdym ładowaniu
     indexfixer_ensure_crons_scheduled();
     
+    // Jeśli opcja wymuszenia aktywności widgetów jest włączona, dodaj filtr
+    if (get_option('indexfixer_force_widgets_active', false)) {
+        add_filter('indexfixer_force_widgets_active', '__return_true');
+        IndexFixer_Logger::log('🔧 Załadowano filtr wymuszający aktywność widgetów', 'debug');
+    }
+    
     // Inicjalizacja widget scheduler (automatyczne planowanie cronów widgetów)
     IndexFixer_Widget_Scheduler::get_instance();
     
@@ -65,6 +71,7 @@ function indexfixer_init() {
     add_action('wp_ajax_indexfixer_refresh_data', 'indexfixer_ajax_refresh_data');
     add_action('wp_ajax_indexfixer_export_csv', 'indexfixer_ajax_export_csv');
     add_action('wp_ajax_indexfixer_check_single_url', 'indexfixer_ajax_check_single_url');
+    add_action('wp_ajax_indexfixer_force_widgets_active', 'indexfixer_ajax_force_widgets_active');
     
     // Rejestracja harmonogramu
     add_action('indexfixer_check_urls_event', 'indexfixer_check_urls');
@@ -322,6 +329,38 @@ function indexfixer_ajax_check_single_url() {
         'status' => $detailed_status,
         'logs' => IndexFixer_Logger::format_logs()
     ));
+}
+
+// Dodajemy nową funkcję do obsługi wymuszenia aktywności widgetów
+function indexfixer_ajax_force_widgets_active() {
+    check_ajax_referer('indexfixer_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Brak uprawnień');
+    }
+    
+    // Zapisz opcję trwale w bazie danych
+    update_option('indexfixer_force_widgets_active', true);
+    
+    // Dodaj filtr który aktywuje scheduler
+    add_filter('indexfixer_force_widgets_active', '__return_true');
+    
+    // Usuń istniejący harmonogram
+    wp_clear_scheduled_hook('indexfixer_widget_check');
+    
+    // Zaplanuj nowy harmonogram
+    if (wp_schedule_event(time(), 'daily', 'indexfixer_widget_check')) {
+        $next_run = wp_next_scheduled('indexfixer_widget_check');
+        $next_run_local = date('Y-m-d H:i:s', $next_run + (get_option('gmt_offset') * 3600));
+        
+        // Zapisz log
+        IndexFixer_Logger::log("✅ Wymuszono aktywność widgetów. Następne sprawdzanie: {$next_run_local}", 'success');
+        
+        wp_send_json_success("Wymuszono aktywność widgetów. Następne sprawdzanie: {$next_run_local}");
+    } else {
+        IndexFixer_Logger::log("❌ Nie udało się zaplanować zadania po wymuszeniu aktywności widgetów", 'error');
+        wp_send_json_error("Nie udało się zaplanować zadania. Sprawdź logi.");
+    }
 }
 
 // Aktywacja wtyczki

@@ -59,6 +59,7 @@ class IndexFixer_Database {
             last_checked datetime DEFAULT NULL,
             last_status_change datetime DEFAULT NULL,
             check_count int(11) DEFAULT 0,
+            widget_since datetime DEFAULT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
@@ -66,7 +67,8 @@ class IndexFixer_Database {
             KEY post_id (post_id),
             KEY status (status),
             KEY last_checked (last_checked),
-            KEY coverage_state (coverage_state)
+            KEY coverage_state (coverage_state),
+            KEY widget_since (widget_since)
         ) $charset_collate;";
         
         dbDelta($sql);
@@ -134,6 +136,7 @@ class IndexFixer_Database {
             'last_crawl_time' => isset($status_data['lastCrawlTime']) && $status_data['lastCrawlTime'] !== 'unknown' 
                 ? date('Y-m-d H:i:s', strtotime($status_data['lastCrawlTime'])) : null,
             'last_checked' => current_time('mysql'),
+            'widget_since' => isset($status_data['widget_since']) ? $status_data['widget_since'] : null,
         );
         
         // Sprawdź czy URL już istnieje
@@ -155,7 +158,7 @@ class IndexFixer_Database {
                 $table_name,
                 $data,
                 array('id' => $existing->id),
-                array('%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d'),
+                array('%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s'),
                 array('%d')
             );
         } else {
@@ -166,7 +169,7 @@ class IndexFixer_Database {
             $wpdb->insert(
                 $table_name,
                 $data,
-                array('%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d')
+                array('%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d')
             );
         }
     }
@@ -200,7 +203,8 @@ class IndexFixer_Database {
             'lastCrawlTime' => $result->last_crawl_time,
             'lastChecked' => $result->last_checked,
             'lastStatusChange' => $result->last_status_change,
-            'checkCount' => $result->check_count
+            'checkCount' => $result->check_count,
+            'widget_since' => $result->widget_since
         );
     }
     
