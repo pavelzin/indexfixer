@@ -148,14 +148,6 @@ class IndexFixer_Database {
     }
     
     /**
-     * Pobiera nazwę tabeli historii z prefixem
-     */
-    public static function get_history_table_name() {
-        global $wpdb;
-        return $wpdb->prefix . 'indexfixer_url_history';
-    }
-    
-    /**
      * Zapisuje/aktualizuje status URL-a
      */
     public static function save_url_status($post_id, $url, $status_data) {
@@ -204,10 +196,10 @@ class IndexFixer_Database {
         // Sprawdź czy nastąpiła zmiana statusu (dla historii)
         $status_changed = false;
         if ($existing) {
-            // Sprawdź czy status się zmienił (ignoruj wielkość liter)
-            if (strtolower($existing->status) !== strtolower($data['status']) || 
-                strtolower($existing->coverage_state) !== strtolower($data['coverage_state']) ||
-                strtolower($existing->verdict) !== strtolower($data['verdict'])) {
+            // Sprawdź czy status się zmienił
+            if ($existing->status !== $data['status'] || 
+                $existing->coverage_state !== $data['coverage_state'] ||
+                $existing->verdict !== $data['verdict']) {
                 $data['last_status_change'] = current_time('mysql');
                 $status_changed = true;
             }
@@ -222,17 +214,6 @@ class IndexFixer_Database {
                 array('%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s'),
                 array('%d')
             );
-            
-            // --- POPRAWKA: wymuś ustawienie widget_since jeśli jest przekazane i puste w bazie ---
-            if (isset($data['widget_since']) && !empty($data['widget_since']) && empty($existing->widget_since)) {
-                $wpdb->update(
-                    $table_name,
-                    array('widget_since' => $data['widget_since']),
-                    array('id' => $existing->id),
-                    array('%s'),
-                    array('%d')
-                );
-            }
         } else {
             // Insert - nowy URL
             $data['last_status_change'] = current_time('mysql');
@@ -299,9 +280,8 @@ class IndexFixer_Database {
         
         switch ($status) {
             case 'not_indexed':
-                // Niezaindeksowane to te z coverage_state zawierającym "not indexed"
-                // POPRAWKA: Nie wymagaj verdict = 'NEUTRAL' bo może być 'unknown' przy błędach API
-                $where_clause = "u.coverage_state LIKE '%not indexed%'";
+                // Niezaindeksowane to te z verdict NEUTRAL i coverage_state zawierającym "not indexed"
+                $where_clause = "u.verdict = 'NEUTRAL' AND u.coverage_state LIKE '%not indexed%'";
                 break;
             case 'indexed':
                 // Zaindeksowane to te z verdict PASS i coverage_state zawierającym "indexed"
@@ -328,7 +308,7 @@ class IndexFixer_Database {
                 FROM $table_name u 
                 LEFT JOIN {$wpdb->posts} p ON u.post_id = p.ID 
                 WHERE $where_clause 
-                ORDER BY p.post_date DESC, u.last_checked ASC 
+                ORDER BY u.last_status_change DESC, u.last_checked ASC 
                 LIMIT %d OFFSET %d";
         
         $results = $wpdb->get_results($wpdb->prepare($sql, $limit, $offset));
@@ -443,9 +423,6 @@ class IndexFixer_Database {
                     break;
                 case 'Discovered - currently not indexed':
                     $result['discovered'] += $stat->count;
-                    break;
-                case 'URL is unknown to Google':
-                    $result['unknown'] += $stat->count;
                     break;
                 default:
                     if ($stat->status === 'unknown' || empty($stat->last_checked)) {
@@ -745,7 +722,7 @@ class IndexFixer_Database {
         $where_clause = '';
         switch ($status) {
             case 'not_indexed':
-                $where_clause = "(u.coverage_state LIKE '%not indexed%' OR u.coverage_state = 'URL is unknown to Google')";
+                $where_clause = $wpdb->prepare("u.verdict = 'NEUTRAL' AND u.coverage_state LIKE %s", '%not indexed%');
                 break;
             case 'indexed':
                 $where_clause = $wpdb->prepare("u.verdict = 'PASS' AND u.coverage_state LIKE %s", '%indexed%');
@@ -767,7 +744,7 @@ class IndexFixer_Database {
                 FROM $table_name u 
                 LEFT JOIN {$wpdb->posts} p ON u.post_id = p.ID 
                 WHERE $where_clause 
-                ORDER BY p.post_date DESC, u.last_status_change DESC 
+                ORDER BY u.last_status_change DESC, u.last_checked ASC 
                 LIMIT %d OFFSET %d";
         $results = $wpdb->get_results($wpdb->prepare($sql, $limit, $offset));
         return $results;
@@ -785,48 +762,16 @@ class IndexFixer_Database {
         
         $history_table = $wpdb->prefix . 'indexfixer_url_history';
         
-        // POPRAWKA 1: Sprawdź ostatni wpis w historii żeby uniknąć duplikatów
-        $last_history_entry = $wpdb->get_row($wpdb->prepare(
-            "SELECT coverage_state, status, verdict FROM $history_table 
-             WHERE url = %s 
-             ORDER BY changed_at DESC 
-             LIMIT 1",
-            $url
-        ));
-        
-        // Sprawdź czy nowy status różni się od ostatniego wpisu w historii
-        if ($last_history_entry) {
-            $new_coverage = isset($new_status_data['coverageState']) ? $new_status_data['coverageState'] : null;
-            $new_status = isset($new_status_data['simple_status']) ? $new_status_data['simple_status'] : 'unknown';
-            $new_verdict = isset($new_status_data['verdict']) ? $new_status_data['verdict'] : null;
-            
-            if (strtolower($last_history_entry->coverage_state) === strtolower($new_coverage) &&
-                strtolower($last_history_entry->status) === strtolower($new_status) &&
-                strtolower($last_history_entry->verdict) === strtolower($new_verdict)) {
-                
-                IndexFixer_Logger::log("🔄 Historia: Pominięto zapis - identyczny z ostatnim wpisem w historii dla $url", 'debug');
-                return true;
-            }
-        }
-        
         // Określ typ zmiany
         $change_type = 'status_change';
         if (!$previous_status_data) {
             $change_type = 'new';
         } elseif (
-            isset($previous_status_data['coverageState']) && 
-            isset($new_status_data['coverageState']) &&
-            strtolower($previous_status_data['coverageState']) === strtolower($new_status_data['coverageState']) &&
-            isset($previous_status_data['simple_status']) && 
-            isset($new_status_data['simple_status']) &&
-            strtolower($previous_status_data['simple_status']) === strtolower($new_status_data['simple_status']) &&
-            isset($previous_status_data['verdict']) && 
-            isset($new_status_data['verdict']) &&
-            strtolower($previous_status_data['verdict']) === strtolower($new_status_data['verdict'])
+            isset($previous_status_data['coverage_state']) && 
+            isset($new_status_data['coverage_state']) &&
+            $previous_status_data['coverage_state'] === $new_status_data['coverage_state']
         ) {
-            // Statusy są identyczne - nie zapisuj do historii
-            IndexFixer_Logger::log("🔄 Historia: Pominięto zapis - status bez zmian dla $url", 'debug');
-            return true;
+            $change_type = 'recheck';
         }
         
         // Oblicz dni od publikacji (jeśli mamy post_id)

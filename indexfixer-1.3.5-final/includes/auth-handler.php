@@ -36,13 +36,7 @@ class IndexFixer_Auth_Handler {
             $this->access_token = get_option('indexfixer_gsc_access_token');
             $this->refresh_token = get_option('indexfixer_gsc_refresh_token');
             
-            // ZOPTYMALIZOWANE: Loguj tylko co 50 wywołań zamiast za każdym razem
-            static $reload_call_counter = 0;
-            $reload_call_counter++;
-            
-            if ($reload_call_counter === 1 || $reload_call_counter % 50 === 0) {
-                IndexFixer_Logger::log("Przeładowano tokeny z bazy danych (wywołanie #$reload_call_counter)", 'info');
-            }
+            IndexFixer_Logger::log('Przeładowano tokeny z bazy danych', 'info');
         }
     }
     

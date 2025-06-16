@@ -3,7 +3,7 @@
  * Plugin Name: IndexFixer
  * Plugin URI: https://github.com/pavelzin/indexfixer.git
  * Description: Wtyczka do sprawdzania statusu indeksowania URL-i w Google Search Console
- * Version: 1.3.14
+ * Version: 1.3.5
  * Author: Pawel Zinkiewicz
  * Author URI: https://bynajmniej.pl
  * License: GPL v2 or later
@@ -23,7 +23,7 @@ if (!function_exists('add_action')) {
 }
 
 // Definicje stałych
-define('INDEXFIXER_VERSION', '1.3.13');
+define('INDEXFIXER_VERSION', '1.3.5');
 define('INDEXFIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INDEXFIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('INDEXFIXER_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -37,7 +37,6 @@ require_once INDEXFIXER_PLUGIN_DIR . 'includes/fetch-urls.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/cache.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/helpers.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/auth-handler.php';
-require_once INDEXFIXER_PLUGIN_DIR . 'includes/quota-monitor.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/gsc-api.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/database.php';
 require_once INDEXFIXER_PLUGIN_DIR . 'includes/widget.php';
@@ -267,20 +266,6 @@ function indexfixer_ajax_check_single_url() {
     if ($status === false) {
         IndexFixer_Logger::log("❌ Błąd sprawdzania URL: $url", 'error');
         wp_send_json_error('Nie udało się sprawdzić URL. Sprawdź logi.');
-    }
-    
-    // --- DODANE: jeśli URL jest w widgetcie i nie ma widget_since, ustaw to pole ---
-    $widget_urls = IndexFixer_Widget_Scheduler::get_all_widget_urls();
-    if (isset($widget_urls[$url]) && empty($widget_urls[$url]->widget_since)) {
-        global $wpdb;
-        $table_name = IndexFixer_Database::get_table_name();
-        $wpdb->update(
-            $table_name,
-            ['widget_since' => current_time('mysql')],
-            ['url' => $url],
-            ['%s'],
-            ['%s']
-        );
     }
     
     // Przygotuj szczegółowe dane
@@ -519,7 +504,7 @@ function indexfixer_check_urls() {
         
         try {
             $status = $gsc_api->check_url_status($url_data['url']);
-            if ($status !== false && !isset($status['error'])) {
+            if ($status !== false) {
                 // Przygotuj szczegółowe dane do zapisu w cache
                 $detailed_status = array(
                     'verdict' => isset($status['indexStatusResult']['verdict']) ? $status['indexStatusResult']['verdict'] : 'unknown',
@@ -581,9 +566,8 @@ function indexfixer_check_urls() {
                 );
                 $checked++;
             } else {
-                $error_msg = isset($status['error']) ? $status['error'] : 'Nieznany błąd';
                 IndexFixer_Logger::log(
-                    sprintf('❌ BŁĄD [%d/%d]: %s - %s', $current_position, $total_urls, $url_data['url'], $error_msg),
+                    sprintf('❌ BŁĄD [%d/%d]: Nie udało się sprawdzić %s', $current_position, $total_urls, $url_data['url']),
                     'error'
                 );
                 $errors++;
@@ -596,21 +580,10 @@ function indexfixer_check_urls() {
             $errors++;
         }
         
-        // Inteligentne opóźnienie bazujące na limitach API
+        // Dodaj opóźnienie między URL-ami żeby nie przeciążyć API
         if ($current_position < $total_urls) {
-            $quota_monitor = IndexFixer_Quota_Monitor::get_instance();
-            $stats = $quota_monitor->get_usage_stats();
-            
-            // Jeśli wykorzystaliśmy > 90% limitu minutowego (540/600), poczekaj do nowej minuty
-            if ($stats['minute']['percentage'] > 90) {
-                $wait_time = 60 - (int)date('s'); // Czekaj do nowej minuty
-                IndexFixer_Logger::log(sprintf('⏳ Limit minutowy prawie wyczerpany (%d/600) - czekam %ds do nowej minuty', 
-                    $stats['minute']['used'], $wait_time), 'info');
-                sleep($wait_time);
-            } else {
-                // Krótkie opóźnienie 0.1s między requestami (bezpieczne dla API)
-                usleep(100000); // 0.1 sekundy = 100,000 mikrosekund
-            }
+            IndexFixer_Logger::log('⏳ Czekam 3 sekundy przed następnym URL...', 'info');
+            sleep(3);
         }
     }
     
@@ -682,23 +655,12 @@ class IndexFixer {
         // Utwórz tabele bazy danych
         IndexFixer_Database::create_tables();
         
-        // Sprawdź czy mamy ważną autoryzację przed planowaniem cron jobów
-        $auth_handler = new IndexFixer_Auth_Handler();
-        $is_authorized = $auth_handler->is_authorized();
-        
-        if ($is_authorized) {
-            IndexFixer_Logger::log('✅ Autoryzacja GSC jest ważna - planuje cron joby', 'success');
-            
-            // Zaplanuj odnawianie tokenów co 50 minut
-            if (!wp_next_scheduled('indexfixer_refresh_tokens')) {
-                wp_schedule_event(time(), 'hourly', 'indexfixer_refresh_tokens');
-            }
-        } else {
-            IndexFixer_Logger::log('⚠️ Brak ważnej autoryzacji GSC - pomijam planowanie cron jobów', 'warning');
-            IndexFixer_Logger::log('💡 Skonfiguruj autoryzację OAuth w ustawieniach wtyczki', 'info');
+        // Zaplanuj odnawianie tokenów co 50 minut
+        if (!wp_next_scheduled('indexfixer_refresh_tokens')) {
+            wp_schedule_event(time(), 'hourly', 'indexfixer_refresh_tokens');
         }
         
-        // NOWY: Zaplanuj codzienne czyszczenie o 3:00 rano (niezależnie od autoryzacji)
+        // NOWY: Zaplanuj codzienne czyszczenie o 3:00 rano
         if (!wp_next_scheduled('indexfixer_daily_cleanup')) {
             wp_schedule_event(strtotime('tomorrow 3:00 AM'), 'daily', 'indexfixer_daily_cleanup');
         }
@@ -720,11 +682,6 @@ class IndexFixer {
             if ($auth->is_authorized()) {
                 $auth->refresh_access_token();
                 IndexFixer_Logger::log('🔄 Tokeny zostały automatycznie odświeżone przez cron', 'success');
-            } else {
-                IndexFixer_Logger::log('⚠️ Cron: Brak ważnej autoryzacji - pomijam odnawianie tokenów', 'warning');
-                // Wyłącz cron job jeśli nie ma autoryzacji
-                wp_clear_scheduled_hook('indexfixer_refresh_tokens');
-                IndexFixer_Logger::log('🚫 Wyłączono automatyczne odnawianie tokenów - skonfiguruj autoryzację OAuth', 'info');
             }
         }
     }

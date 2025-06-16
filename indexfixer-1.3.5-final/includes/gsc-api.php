@@ -10,7 +10,6 @@ if (!defined('ABSPATH')) {
 if (!class_exists('IndexFixer_GSC_API')) {
     class IndexFixer_GSC_API {
         private $auth_handler;
-        private static $cached_site_url = null;  // Cache dla wykrytego formatu siteUrl
         
         /**
          * Konstruktor
@@ -26,60 +25,33 @@ if (!class_exists('IndexFixer_GSC_API')) {
             IndexFixer_Logger::log('=== POCZĄTEK check_url_status() ===', 'info');
             IndexFixer_Logger::log(sprintf('URL do sprawdzenia: %s', $url), 'info');
             
-            // ZOPTYMALIZOWANE: Sprawdź token tylko raz na sesję, nie przed każdym URL
-            static $token_checked_this_session = false;
-            static $session_start_time = null;
+            // Przeładuj tokeny z bazy na wypadek gdyby zostały odświeżone w innej instancji
+            $this->auth_handler->reload_tokens_from_database();
             
-            if (!$token_checked_this_session || (time() - $session_start_time > 1800)) { // 30 minut
-                $session_start_time = time();
-                
-                // Przeładuj tokeny z bazy na wypadek gdyby zostały odświeżone w innej instancji
-                $this->auth_handler->reload_tokens_from_database();
-                IndexFixer_Logger::log('Przeładowano tokeny z bazy danych (początek sesji)', 'info');
-                
-                // Sprawdź i odnów token PRZED rozpoczęciem sesji sprawdzania
-                if (!$this->ensure_fresh_token()) {
-                    IndexFixer_Logger::log('❌ Nie udało się zapewnić świeżego tokenu', 'error');
-                    return array('error' => 'Brak autoryzacji do Google Search Console - token wygasł i nie udało się go odnowić');
-                }
-                
-                IndexFixer_Logger::log('✅ Token jest świeży, rozpoczynam sesję sprawdzania...', 'info');
-                $token_checked_this_session = true;
+            // NOWE: Sprawdź i odnów token PRZED każdym requestem (30 minut przed wygaśnięciem)
+            if (!$this->ensure_fresh_token()) {
+                IndexFixer_Logger::log('❌ Nie udało się zapewnić świeżego tokenu', 'error');
+                return array('error' => 'Brak autoryzacji do Google Search Console - token wygasł i nie udało się go odnowić');
             }
+
+            IndexFixer_Logger::log('✅ Token jest świeży, przechodze dalej...', 'info');
             
-            // Sprawdź czy mamy już wykryty format siteUrl w cache (tylko raz na sesję)
-            if (self::$cached_site_url === null) {
-                self::$cached_site_url = $this->detect_working_site_url($url);
-                if (self::$cached_site_url === false) {
-                    IndexFixer_Logger::log('Wszystkie próby wykrycia formatu siteUrl nie powiodły się', 'error');
-                    return false;
-                }
-            }
-            
-            // Użyj wykrytego formatu z cache
-            IndexFixer_Logger::log(sprintf('Używam wykrytego formatu siteUrl: %s (z cache)', self::$cached_site_url), 'info');
-            return $this->try_url_inspection($url, self::$cached_site_url);
-        }
-        
-        /**
-         * Wykrywa działający format siteUrl dla danej strony (tylko raz na sesję)
-         */
-        private function detect_working_site_url($sample_url) {
+            // Użyj standardowe formaty bazując na get_site_url()
             $site_url = get_site_url();
             $site_formats = array(
-                rtrim($site_url, '/') . '/',  // https://womensfitness.pl/
-                $site_url,  // https://womensfitness.pl
-                'sc-domain:' . str_replace(['http://', 'https://'], '', rtrim($site_url, '/')),  // sc-domain:womensfitness.pl
+                rtrim($site_url, '/') . '/',  // https://fitrunner.pl/
+                $site_url,  // https://fitrunner.pl
+                'sc-domain:' . str_replace(['http://', 'https://'], '', rtrim($site_url, '/')),  // sc-domain:fitrunner.pl
             );
             
-            IndexFixer_Logger::log('🔍 Wykrywam działający format siteUrl: ' . implode(', ', $site_formats), 'info');
+            IndexFixer_Logger::log('Próbuję formaty: ' . implode(', ', $site_formats), 'info');
             
             foreach ($site_formats as $index => $format) {
                 IndexFixer_Logger::log(sprintf('Próbuję format siteUrl: %s', $format), 'info');
                 IndexFixer_Logger::log(sprintf('PORÓWNANIE: URL="%s" siteUrl="%s" czy URL zaczyna się od siteUrl? %s', 
-                    $sample_url, 
+                    $url, 
                     $format, 
-                    strpos($sample_url, rtrim($format, '/')) === 0 ? 'TAK' : 'NIE'
+                    strpos($url, rtrim($format, '/')) === 0 ? 'TAK' : 'NIE'
                 ), 'info');
                 
                 // Dodaj opóźnienie przed kolejną próbą (poza pierwszą)
@@ -88,14 +60,13 @@ if (!class_exists('IndexFixer_GSC_API')) {
                     sleep(2);
                 }
                 
-                $result = $this->try_url_inspection($sample_url, $format);
+                $result = $this->try_url_inspection($url, $format);
                 if ($result !== false) {
-                    IndexFixer_Logger::log(sprintf('✅ Wykryto działający format siteUrl: %s - zapamiętano na sesję', $format), 'success');
-                    return $format;
+                    return $result;
                 }
             }
             
-            IndexFixer_Logger::log('❌ Nie udało się wykryć działającego formatu siteUrl', 'error');
+            IndexFixer_Logger::log('Wszystkie próby nie powiodły się', 'error');
             return false;
         }
         
@@ -143,7 +114,6 @@ if (!class_exists('IndexFixer_GSC_API')) {
             $time_until_expiry = $token_expires_at - $current_time;
             $minutes_until_expiry = round($time_until_expiry / 60);
             
-            // Zawsze loguj info o tokenie przy sprawdzeniu sesji
             IndexFixer_Logger::log(sprintf('🕐 Token wygasa za %d minut (%s)', 
                 $minutes_until_expiry, 
                 date('Y-m-d H:i:s', $token_expires_at)
@@ -175,13 +145,6 @@ if (!class_exists('IndexFixer_GSC_API')) {
          * Próbuje sprawdzić URL z określonym formatem siteUrl
          */
         private function try_url_inspection($url, $site_url) {
-            // NOWE: Sprawdź limity API przed wykonaniem requestu
-            $quota_monitor = IndexFixer_Quota_Monitor::get_instance();
-            if (!$quota_monitor->can_make_request()) {
-                IndexFixer_Logger::log('🚫 Request anulowany - przekroczono limity API Google', 'error');
-                return array('error' => 'Przekroczono dzienny limit API Google Search Console (2000 requestów/dzień)');
-            }
-            
             $endpoint = 'https://searchconsole.googleapis.com/v1/urlInspection/index:inspect';
             
             IndexFixer_Logger::log(sprintf('Endpoint API: %s', $endpoint), 'info');
@@ -218,33 +181,12 @@ if (!class_exists('IndexFixer_GSC_API')) {
             IndexFixer_Logger::log(sprintf('Headers odpowiedzi: %s', print_r($headers, true)), 'info');
             
             if ($response_code !== 200) {
-                // NOWE: Obsługa błędu 429 Quota Exceeded
-                if ($response_code === 429) {
-                    IndexFixer_Logger::log(
-                        sprintf('🚫 QUOTA EXCEEDED dla URL %s - Google API zwrócił błąd 429', $url),
-                        'error'
-                    );
-                    
-                    // Automatycznie ustaw licznik na maksimum (2000/2000)
-                    $quota_monitor->force_quota_exceeded();
-                    
-                    return array('error' => 'Quota exceeded - limit 2000 requestów/dzień przekroczony');
-                }
-                
                 IndexFixer_Logger::log(
                     sprintf('Błąd API GSC dla URL %s (kod %d): %s', $url, $response_code, $body),
                     'error'
                 );
                 return false;
             }
-            
-            // NOWE: Zarejestruj pomyślny request w monitorze limitów
-            $quota_stats = $quota_monitor->record_api_request();
-            IndexFixer_Logger::log(sprintf(
-                '📊 Request zarejestrowany: %d/2000 dzisiaj (pozostało: %d)', 
-                $quota_stats['daily_count'], 
-                $quota_stats['daily_remaining']
-            ), 'info');
             
             $data = json_decode($body, true);
             IndexFixer_Logger::log(sprintf('Odpowiedź API: %s', print_r($data, true)), 'info');

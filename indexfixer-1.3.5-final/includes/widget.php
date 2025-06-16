@@ -36,21 +36,6 @@ class IndexFixer_Not_Indexed_Widget extends WP_Widget {
         // Pobierz niezaindeksowane URL-e wybranego typu postu
         $not_indexed_urls = IndexFixer_Database::get_urls_by_status_and_type('not_indexed', $post_type, $count);
         
-        global $wpdb;
-        $table_name = IndexFixer_Database::get_table_name();
-        // --- USTAW widget_since dla KAŻDEGO URL-a w widgetcie, jeśli nie jest ustawione ---
-        foreach ($not_indexed_urls as $url_data) {
-            if (empty($url_data->widget_since)) {
-                $wpdb->update(
-                    $table_name,
-                    ['widget_since' => current_time('mysql')],
-                    ['url' => $url_data->url],
-                    ['%s'],
-                    ['%s']
-                );
-            }
-        }
-        
         if (empty($not_indexed_urls)) {
             echo '<p>Brak niezaindeksowanych postów 🎉</p>';
         } else {

@@ -241,18 +241,11 @@ class IndexFixer_Widget_Scheduler {
         IndexFixer_Logger::log("🎯 Znaleziono " . count($urls_to_check) . " URL-ów do sprawdzenia", 'info');
         
         $gsc_api = new IndexFixer_GSC_API();
-        $quota_monitor = IndexFixer_Quota_Monitor::get_instance();
         $checked = 0;
         $indexed_found = 0;
         
         foreach ($urls_to_check as $url_data) {
             IndexFixer_Logger::log("🔍 Sprawdzam: {$url_data->url}", 'info');
-            
-            // NOWE: Sprawdź limity API przed każdym requestem
-            if (!$quota_monitor->can_make_request()) {
-                IndexFixer_Logger::log('🚫 Przerwano sprawdzanie - przekroczono limity API Google', 'error');
-                break;
-            }
             
             try {
                 $status = $gsc_api->check_url_status($url_data->url);
@@ -292,19 +285,14 @@ class IndexFixer_Widget_Scheduler {
                         }
                     } else {
                         $detailed_status['simple_status'] = 'unknown';
-                        IndexFixer_Logger::log("⚠️ PUSTA ODPOWIEDŹ GSC: {$url_data->url} - brak coverageState w odpowiedzi API", 'warning');
-                        IndexFixer_Logger::log("🚫 NIE ZAPISUJĘ do bazy - zachowuję poprzedni status", 'info');
-                        // Nie zapisuj pustych statusów - zachowaj poprzedni status
-                        $checked++; // Zwiększ licznik sprawdzonych ale nie zapisuj
-                        continue;
                     }
                     
-                    // Zapisz w bazie danych tylko jeśli mamy konkretny status
+                    // Zapisz w bazie danych
                     IndexFixer_Database::save_url_status($url_data->post_id, $url_data->url, $detailed_status);
                     $checked++;
                     
-                    // Rate limiting - zwiększone z powodu limitów GSC API
-                    sleep(5);
+                    // Rate limiting
+                    sleep(2);
                     
                 } else {
                     IndexFixer_Logger::log("❌ Błąd sprawdzania: {$url_data->url}", 'error');

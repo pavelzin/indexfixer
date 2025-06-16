@@ -44,8 +44,6 @@ class IndexFixer_Dashboard {
         add_action('wp_ajax_indexfixer_test_stats_cron', array($this, 'ajax_test_stats_cron'));
         add_action('wp_ajax_indexfixer_manual_cleanup', array($this, 'ajax_manual_cleanup'));
         add_action('wp_ajax_indexfixer_recreate_tables', array($this, 'ajax_recreate_tables'));
-        add_action('wp_ajax_indexfixer_remove_trailing_slash_urls', array($this, 'ajax_remove_trailing_slash_urls'));
-        add_action('wp_ajax_indexfixer_rebuild_urls', array($this, 'ajax_rebuild_urls'));
     }
     
     /**
@@ -376,132 +374,6 @@ class IndexFixer_Dashboard {
         
         // Wyświetl dashboard
         include INDEXFIXER_PLUGIN_DIR . 'templates/dashboard.php';
-    }
-    
-    /**
-     * Renderuje sekcję monitorowania limitów API
-     */
-    private function render_quota_monitor() {
-        $quota_monitor = IndexFixer_Quota_Monitor::get_instance();
-        $stats = $quota_monitor->get_usage_stats();
-        $history = $quota_monitor->get_usage_history(7);
-        $estimation = $quota_monitor->estimate_quota_exhaustion();
-        
-        $status_class = '';
-        $status_text = '';
-        $status_icon = '';
-        
-        switch ($stats['status']) {
-            case 'exceeded':
-                $status_class = 'notice-error';
-                $status_text = 'LIMIT PRZEKROCZONY';
-                $status_icon = '🚫';
-                break;
-            case 'critical':
-                $status_class = 'notice-error';
-                $status_text = 'KRYTYCZNY';
-                $status_icon = '🔴';
-                break;
-            case 'warning':
-                $status_class = 'notice-warning';
-                $status_text = 'OSTRZEŻENIE';
-                $status_icon = '🟡';
-                break;
-            default:
-                $status_class = 'notice-success';
-                $status_text = 'OK';
-                $status_icon = '✅';
-                break;
-        }
-        ?>
-        
-        <div class="notice <?php echo $status_class; ?>" style="margin-bottom: 20px;">
-            <h3><?php echo $status_icon; ?> Monitor Limitów API Google Search Console</h3>
-            
-            <div style="display: flex; gap: 30px; align-items: center; margin: 15px 0;">
-                <div>
-                    <strong>Status:</strong> <?php echo $status_icon . ' ' . $status_text; ?>
-                </div>
-                <div>
-                    <strong>Dzisiaj:</strong> 
-                    <?php echo $stats['daily']['used']; ?>/<?php echo $stats['daily']['limit']; ?> 
-                    (<?php echo $stats['daily']['percentage']; ?>%)
-                </div>
-                <div>
-                    <strong>Pozostało:</strong> <?php echo $stats['daily']['remaining']; ?> requestów
-                </div>
-                <div>
-                    <strong>Ta minuta:</strong> 
-                    <?php echo $stats['minute']['used']; ?>/<?php echo $stats['minute']['limit']; ?>
-                </div>
-            </div>
-            
-            <?php if ($stats['status'] !== 'ok'): ?>
-                <div style="margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.8); border-radius: 4px;">
-                    <strong>⚠️ Uwaga:</strong> 
-                    <?php if ($stats['status'] === 'exceeded'): ?>
-                        Dzienny limit API został przekroczony. Sprawdzanie URL-ów zostało wstrzymane do jutra.
-                    <?php elseif ($stats['status'] === 'critical'): ?>
-                        Wykorzystano ponad 95% dziennego limitu. System może wkrótce wstrzymać sprawdzanie.
-                    <?php else: ?>
-                        Wykorzystano ponad 80% dziennego limitu. Monitoruj wykorzystanie.
-                    <?php endif; ?>
-                </div>
-            <?php endif; ?>
-            
-            <div style="margin-top: 15px;">
-                <strong>Prognoza:</strong> <?php echo esc_html($estimation); ?>
-            </div>
-            
-            <?php if (!empty($history)): ?>
-                <details style="margin-top: 15px;">
-                    <summary style="cursor: pointer; font-weight: bold;">📊 Historia ostatnich 7 dni</summary>
-                    <div style="margin-top: 10px;">
-                        <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
-                            <thead>
-                                <tr style="background: #f0f0f1;">
-                                    <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Data</th>
-                                    <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Requestów</th>
-                                    <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">% Limitu</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($history as $date => $count): ?>
-                                    <?php 
-                                    $percentage = round(($count / 2000) * 100, 1);
-                                    $row_class = '';
-                                    if ($percentage >= 95) $row_class = 'style="background: #ffebee;"';
-                                    elseif ($percentage >= 80) $row_class = 'style="background: #fff3e0;"';
-                                    ?>
-                                    <tr <?php echo $row_class; ?>>
-                                        <td style="padding: 8px; border: 1px solid #ddd;">
-                                            <?php echo date('d.m.Y', strtotime($date)); ?>
-                                            <?php if ($date === date('Y-m-d')): ?>
-                                                <em>(dzisiaj)</em>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">
-                                            <?php echo number_format($count); ?>
-                                        </td>
-                                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">
-                                            <?php echo $percentage; ?>%
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </details>
-            <?php endif; ?>
-            
-            <div style="margin-top: 15px; font-size: 12px; color: #666;">
-                <strong>Limity Google Search Console API:</strong> 
-                2000 requestów/dzień • 600 requestów/minutę • 
-                <a href="https://developers.google.com/webmaster-tools/limits" target="_blank">Dokumentacja</a>
-            </div>
-        </div>
-        
-        <?php
     }
     
     /**
@@ -1083,21 +955,9 @@ class IndexFixer_Dashboard {
                 $errors++;
             }
             
-            // Inteligentne opóźnienie bazujące na limitach API
+            // Rate limiting
             if ($current_position < $total_urls) {
-                $quota_monitor = IndexFixer_Quota_Monitor::get_instance();
-                $stats = $quota_monitor->get_usage_stats();
-                
-                // Jeśli wykorzystaliśmy > 90% limitu minutowego (540/600), poczekaj do nowej minuty
-                if ($stats['minute']['percentage'] > 90) {
-                    $wait_time = 60 - (int)date('s'); // Czekaj do nowej minuty
-                    IndexFixer_Logger::log(sprintf('⏳ Limit minutowy prawie wyczerpany (%d/600) - czekam %ds do nowej minuty', 
-                        $stats['minute']['used'], $wait_time), 'info');
-                    sleep($wait_time);
-                } else {
-                    // Krótkie opóźnienie 0.1s między requestami (bezpieczne dla API)
-                    usleep(100000); // 0.1 sekundy = 100,000 mikrosekund
-                }
+                sleep(3);
             }
         }
         
@@ -1561,140 +1421,6 @@ class IndexFixer_Dashboard {
         } catch (Exception $e) {
             IndexFixer_Logger::log('❌ Błąd podczas tworzenia tabel: ' . $e->getMessage(), 'error');
             wp_send_json_error('Błąd podczas tworzenia tabel: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * AJAX handler dla usuwania URL-ów ze slashem na końcu
-     */
-    public function ajax_remove_trailing_slash_urls() {
-        check_ajax_referer('indexfixer_remove_slash_urls', 'nonce');
-        
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error('Brak uprawnień');
-        }
-        
-        IndexFixer_Logger::log('🧹 Uruchomiono usuwanie URL-ów ze slashem na końcu', 'info');
-        
-        try {
-            global $wpdb;
-            $table_name = IndexFixer_Database::get_table_name();
-            
-            // Znajdź URL-e ze slashem na końcu (ale nie główną stronę /)
-            $urls_with_slash = $wpdb->get_results(
-                "SELECT id, url FROM $table_name 
-                 WHERE url LIKE '%/' 
-                 AND url != '/' 
-                 AND LENGTH(url) > 1"
-            );
-            
-            $deleted_count = 0;
-            
-            if (!empty($urls_with_slash)) {
-                // Usuń URL-e ze slashem
-                $result = $wpdb->query(
-                    "DELETE FROM $table_name 
-                     WHERE url LIKE '%/' 
-                     AND url != '/' 
-                     AND LENGTH(url) > 1"
-                );
-                
-                $deleted_count = $wpdb->rows_affected;
-                
-                IndexFixer_Logger::log("✅ Usunięto $deleted_count URL-ów ze slashem na końcu", 'success');
-                
-                // Loguj kilka przykładów usuniętych URL-ów
-                $examples = array_slice($urls_with_slash, 0, 5);
-                foreach ($examples as $example) {
-                    IndexFixer_Logger::log("🗑️ Usunięto: {$example->url}", 'info');
-                }
-                
-                if (count($urls_with_slash) > 5) {
-                    IndexFixer_Logger::log("... i " . (count($urls_with_slash) - 5) . " więcej", 'info');
-                }
-            }
-            
-            wp_send_json_success(array(
-                'deleted_count' => $deleted_count,
-                'message' => "Usunięto $deleted_count URL-ów ze slashem na końcu"
-            ));
-            
-        } catch (Exception $e) {
-            IndexFixer_Logger::log('❌ Błąd podczas usuwania URL-ów: ' . $e->getMessage(), 'error');
-            wp_send_json_error('Błąd podczas usuwania URL-ów: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * AJAX handler dla przebudowy URL-ów po zmianie struktury
-     */
-    public function ajax_rebuild_urls() {
-        check_ajax_referer('indexfixer_rebuild_urls', 'nonce');
-        
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error('Brak uprawnień');
-        }
-        
-        IndexFixer_Logger::log('🔄 Uruchomiono przebudowę URL-ów po zmianie struktury', 'info');
-        
-        try {
-            global $wpdb;
-            $table_name = IndexFixer_Database::get_table_name();
-            $history_table = IndexFixer_Database::get_history_table_name();
-            
-            // Pobierz statystyki przed usunięciem
-            $urls_before = $wpdb->get_var("SELECT COUNT(*) FROM $table_name");
-            $history_before = $wpdb->get_var("SELECT COUNT(*) FROM $history_table");
-            
-            // Usuń wszystkie URL-e z głównej tabeli
-            $wpdb->query("TRUNCATE TABLE $table_name");
-            
-            // Usuń wszystkie wpisy z historii
-            $wpdb->query("TRUNCATE TABLE $history_table");
-            
-            IndexFixer_Logger::log("🗑️ Usunięto $urls_before URL-ów z głównej tabeli", 'info');
-            IndexFixer_Logger::log("🗑️ Usunięto $history_before wpisów z historii", 'info');
-            
-            // Pobierz świeże URL-e z WordPressa
-            require_once INDEXFIXER_PLUGIN_DIR . 'includes/fetch-urls.php';
-            $fresh_urls = get_all_urls();
-            
-            if (empty($fresh_urls)) {
-                IndexFixer_Logger::log('⚠️ Nie znaleziono URL-ów w WordPressie', 'warning');
-                wp_send_json_error('Nie znaleziono URL-ów w WordPressie');
-                return;
-            }
-            
-            // Dodaj świeże URL-e do bazy
-            $added_count = 0;
-            foreach ($fresh_urls as $url) {
-                $result = IndexFixer_Database::add_or_update_url($url, 'unknown', array(
-                    'verdict' => 'URL_UNKNOWN',
-                    'coverage_state' => null,
-                    'robots_txt_state' => null,
-                    'indexing_state' => null,
-                    'page_fetch_state' => null,
-                    'crawled_as' => null,
-                    'last_crawl_time' => null
-                ));
-                
-                if ($result) {
-                    $added_count++;
-                }
-            }
-            
-            IndexFixer_Logger::log("✅ Dodano $added_count nowych URL-ów z aktualnej struktury WordPress", 'success');
-            
-            wp_send_json_success(array(
-                'urls_removed' => $urls_before,
-                'history_removed' => $history_before,
-                'urls_added' => $added_count,
-                'message' => "Przebudowa zakończona! Usunięto $urls_before starych URL-ów, dodano $added_count nowych URL-ów z aktualnej struktury WordPress."
-            ));
-            
-        } catch (Exception $e) {
-            IndexFixer_Logger::log('❌ Błąd podczas przebudowy URL-ów: ' . $e->getMessage(), 'error');
-            wp_send_json_error('Błąd podczas przebudowy URL-ów: ' . $e->getMessage());
         }
     }
 } 

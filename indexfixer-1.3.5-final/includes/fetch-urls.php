@@ -32,6 +32,21 @@ class IndexFixer_Fetch_URLs {
             );
         }
 
+        // Jeśli wśród typów jest 'page', pobierz także strony (get_pages nie obsługuje custom post types)
+        if (in_array('page', $post_types)) {
+            $pages = get_pages(array(
+                'post_status' => 'publish',
+                'fields' => array('ID', 'post_type', 'post_date')
+            ));
+            foreach ($pages as $page) {
+                $urls[] = array(
+                    'url' => get_permalink($page->ID),
+                    'post_type' => $page->post_type,
+                    'post_date' => $page->post_date
+                );
+            }
+        }
+
         return $urls;
     }
 } 
